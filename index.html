@@ -794,6 +794,64 @@ function isMapelForSchool(mapel, schoolId) {
   return ids.includes(String(schoolId));
 }
 
+function isMapelForStudentClass(mapel, studentKelas) {
+  const target = String(mapel?.kelas_target || '').trim().toLowerCase();
+  if (!target || target === 'semua' || target === 'all' || target === '-') return true;
+  const sKelas = String(studentKelas || '').trim().toLowerCase();
+  if (!sKelas) return true;
+  const normStudent = sKelas.replace(/^kelas\s+/i, '').trim();
+  const tokens = target
+    .split(/[,;/|]+/)
+    .map(x => x.trim().replace(/^kelas\s+/i, '').trim())
+    .filter(Boolean);
+  return tokens.includes(normStudent);
+}
+
+function getStudentScheduledExams() {
+  const s = STATE.user;
+  if (!s) return [];
+
+  const byMapelId = new Map();
+
+  // 1. Masukkan seluruh jadwal ujian yang sudah didistribusikan ke siswa ini
+  (STATE.jadwalList || []).forEach(j => {
+    const mapel = STATE.mapelList.find(m => String(m.id) === String(j.mapel_id));
+    if (!mapel) return;
+    byMapelId.set(String(mapel.id), { ...j, mapel });
+  });
+
+  // 2. Masukkan seluruh paket ujian Aktif lain yang sesuai sekolah & kelas siswa
+  (STATE.mapelList || []).forEach(m => {
+    const key = String(m.id);
+    if (byMapelId.has(key)) return;
+    if (String(m.status || '').toLowerCase() !== 'aktif') return;
+    if (!isMapelForSchool(m, s.sekolah_id)) return;
+    if (!isMapelForStudentClass(m, s.kelas)) return;
+
+    const existingHasil = (STATE.hasilList || []).find(h => String(h.mapel_id) === key);
+    byMapelId.set(key, {
+      id: null,
+      sekolah_id: s.sekolah_id,
+      siswa_id: s.id,
+      mapel_id: m.id,
+      ruang_id: s.ruang_id || null,
+      sesi_id: s.sesi_id || null,
+      status_ujian: existingHasil ? 'Selesai' : 'Belum Mulai',
+      pelanggaran: 0,
+      mapel: m
+    });
+  });
+
+  const items = Array.from(byMapelId.values());
+  const rank = (item) => {
+    if (item.status_ujian === 'Sedang Mengerjakan') return 0;
+    if (item.status_ujian === 'Selesai') return 3;
+    return evaluateMapelAccessGuard(item.mapel).blocked ? 2 : 1;
+  };
+  items.sort((a, b) => rank(a) - rank(b));
+  return items;
+}
+
 function renderRichText(rawHtml) {
   if (!rawHtml) return '';
   let html = String(rawHtml);
@@ -890,14 +948,21 @@ async function dbInsert(table, payload) {
 async function dbUpsert(table, payload, conflictCol) {
   const rows = Array.isArray(payload) ? payload : [payload];
   if (IS_PREVIEW) {
+    const savedRows = [];
     rows.forEach(r => {
       const idx = (MOCK_DB[table] || []).findIndex(x =>
         conflictCol.split(',').every(c => x[c.trim()] === r[c.trim()])
       );
-      if (idx >= 0) MOCK_DB[table][idx] = { ...MOCK_DB[table][idx], ...r, updated_at: new Date().toISOString() };
-      else MOCK_DB[table].push({ id: `${table}-${Date.now()}-${Math.random()}`, updated_at: new Date().toISOString(), ...r });
+      if (idx >= 0) {
+        MOCK_DB[table][idx] = { ...MOCK_DB[table][idx], ...r, updated_at: new Date().toISOString() };
+        savedRows.push(MOCK_DB[table][idx]);
+      } else {
+        const created = { id: `${table}-${Date.now()}-${Math.random()}`, updated_at: new Date().toISOString(), ...r };
+        MOCK_DB[table].push(created);
+        savedRows.push(created);
+      }
     });
-    return rows;
+    return savedRows;
   }
   const allUpserted = [];
   for (const batch of chunkArray(rows, CHUNK_SIZE)) {
@@ -985,11 +1050,15 @@ async function loadStudentScopedData(siswa) {
   const studentSchool = getSekolahById(schoolId);
 
   if (IS_PREVIEW) {
+    const myJadwal = JSON.parse(JSON.stringify(MOCK_DB.jadwal_peserta || [])).filter(j => j.siswa_id === siswa.id);
+    const assignedMapelIds = new Set(myJadwal.map(j => String(j.mapel_id)));
     STATE.sekolah = studentSchool;
     STATE.ruang = JSON.parse(JSON.stringify(MOCK_DB.ruang_ujian || [])).filter(r => r.sekolah_id === schoolId);
     STATE.sesi = JSON.parse(JSON.stringify(MOCK_DB.sesi_ujian || [])).filter(x => x.sekolah_id === schoolId);
-    STATE.mapelList = JSON.parse(JSON.stringify(MOCK_DB.mapel || [])).filter(m => isMapelForSchool(m, schoolId));
-    STATE.jadwalList = JSON.parse(JSON.stringify(MOCK_DB.jadwal_peserta || [])).filter(j => j.siswa_id === siswa.id);
+    STATE.mapelList = JSON.parse(JSON.stringify(MOCK_DB.mapel || [])).filter(
+      m => isMapelForSchool(m, schoolId) || assignedMapelIds.has(String(m.id))
+    );
+    STATE.jadwalList = myJadwal;
     STATE.hasilList = JSON.parse(JSON.stringify(MOCK_DB.hasil_ujian || [])).filter(h => h.siswa_id === siswa.id);
     return;
   }
@@ -1005,10 +1074,14 @@ async function loadStudentScopedData(siswa) {
   if (jadwalRes.error) throw jadwalRes.error;
   if (hasilRes.error) throw hasilRes.error;
 
+  const assignedMapelIds = new Set((jadwalRes.data || []).map(j => String(j.mapel_id)));
+
   STATE.sekolah = studentSchool;
   STATE.ruang = ruangRes.data || [];
   STATE.sesi = sesiRes.data || [];
-  STATE.mapelList = (mapelRes.data || []).filter(m => isMapelForSchool(m, schoolId));
+  STATE.mapelList = (mapelRes.data || []).filter(
+    m => isMapelForSchool(m, schoolId) || assignedMapelIds.has(String(m.id))
+  );
   STATE.jadwalList = jadwalRes.data || [];
   STATE.hasilList = hasilRes.data || [];
 }
@@ -1106,10 +1179,9 @@ function startKonfirmasiScheduleWatcher() {
   if (STATE.role !== 'siswa' || STATE.siswaStep !== 'konfirmasi') return;
 
   let prevOpenMapelIds = new Set(
-    STATE.jadwalList
-      .map(j => STATE.mapelList.find(m => m.id === j.mapel_id))
-      .filter(m => m && !evaluateMapelAccessGuard(m).blocked)
-      .map(m => String(m.id))
+    getStudentScheduledExams()
+      .filter(item => item.mapel && item.status_ujian !== 'Selesai' && !evaluateMapelAccessGuard(item.mapel).blocked)
+      .map(item => String(item.mapel.id))
   );
 
   STATE.konfirmasiWatchInterval = setInterval(() => {
@@ -1122,8 +1194,8 @@ function startKonfirmasiScheduleWatcher() {
     let statusChanged = false;
     let newlyUnlocked = false;
 
-    STATE.jadwalList.forEach(j => {
-      const m = STATE.mapelList.find(x => x.id === j.mapel_id);
+    getStudentScheduledExams().forEach(j => {
+      const m = j.mapel;
       if (!m || j.status_ujian === 'Selesai') return;
       const guard = evaluateMapelAccessGuard(m);
       const isNowOpen = !guard.blocked;
@@ -1878,20 +1950,7 @@ async function startStudentExam(mapelId) {
         });
       }
 
-      const nowMs = Date.now();
-      const durationMs = (Number(latestMapelMeta.durasi_menit) || 60) * 60 * 1000;
-      const durationEndMs = (draft && draft.endTimeMs) ? draft.endTimeMs : (nowMs + durationMs);
-      const effectiveEndTimeMs = accessGuard.endMs !== null
-        ? Math.min(durationEndMs, accessGuard.endMs)
-        : durationEndMs;
-
-      if (effectiveEndTimeMs <= nowMs) {
-        STATE.loading = false;
-        render();
-        return notify(`Batas waktu jadwal ujian (${String(latestMapelMeta.jam_selesai || '').slice(0, 5)} WIB) telah berakhir.`, "error");
-      }
-
-      const jadwal = STATE.jadwalList.find(j => j.mapel_id === mapelId);
+      let jadwal = STATE.jadwalList.find(j => String(j.mapel_id) === String(mapelId));
       const serverViolations = Number(jadwal?.pelanggaran) || 0;
 
       stopKonfirmasiScheduleWatcher();
@@ -1909,7 +1968,20 @@ async function startStudentExam(mapelId) {
 
       saveStudentDraftToLocal(effectiveEndTimeMs);
 
-      if (jadwal && jadwal.status_ujian === 'Belum Mulai') {
+      if (!jadwal) {
+        const newJadwalPayload = {
+          sekolah_id: STATE.user.sekolah_id,
+          siswa_id: STATE.user.id,
+          mapel_id: mapelId,
+          ruang_id: STATE.user.ruang_id || null,
+          sesi_id: STATE.user.sesi_id || null,
+          status_ujian: 'Sedang Mengerjakan',
+          pelanggaran: 0
+        };
+        const upserted = await dbUpsert('jadwal_peserta', newJadwalPayload, 'siswa_id,mapel_id');
+        jadwal = (upserted && upserted[0]) ? upserted[0] : newJadwalPayload;
+        STATE.jadwalList.push(jadwal);
+      } else if (jadwal.status_ujian === 'Belum Mulai') {
         await dbUpdate('jadwal_peserta', jadwal.id, { status_ujian: 'Sedang Mengerjakan' }, STATE.user.sekolah_id);
         jadwal.status_ujian = 'Sedang Mengerjakan';
       }
@@ -4736,10 +4808,7 @@ function renderSiswaPortal() {
   const sesi = STATE.sesi.find(x => x.id === s.sesi_id);
 
   if (STATE.siswaStep === 'konfirmasi') {
-    const myJadwal = STATE.jadwalList.map(j => ({
-      ...j,
-      mapel: STATE.mapelList.find(m => m.id === j.mapel_id)
-    })).filter(j => j.mapel);
+    const myJadwal = getStudentScheduledExams();
 
     return `
       <div class="min-h-screen flex flex-col">
@@ -4786,12 +4855,13 @@ function renderSiswaPortal() {
               <div class="bg-slate-50/90 rounded-2xl p-4 border border-slate-200 flex flex-col justify-between">
                 <div>
                   <div class="flex items-center justify-between gap-2 mb-3">
-                    <h3 class="text-xs font-extrabold uppercase tracking-wider text-slate-500">Paket Ujian Dijadwalkan</h3>
+                    <h3 class="text-xs font-extrabold uppercase tracking-wider text-slate-500">Paket Ujian Dijadwalkan (${myJadwal.length})</h3>
                     <button type="button" onclick="CBT.refreshKonfirmasi()"
                       class="px-2.5 py-1 rounded-lg bg-white hover:bg-blue-50 text-blue-700 border border-slate-300 text-[11px] font-bold shadow-xs transition">
                       ↻ Cek Jadwal
                     </button>
                   </div>
+                  <div class="max-h-[420px] overflow-y-auto pr-1">
                   ${myJadwal.length === 0
                     ? `<p class="text-xs text-slate-500">Belum ada jadwal paket ujian yang ditugaskan untuk akun Anda.</p>`
                     : myJadwal.map(j => {
@@ -4821,6 +4891,7 @@ function renderSiswaPortal() {
                       </div>
                     `;
                     }).join('')}
+                  </div>
                 </div>
                 <p class="text-[11px] text-amber-900 bg-amber-50 border border-amber-200 p-3 rounded-xl mt-2">
                   <strong>Perhatian:</strong> Dilarang berpindah tab atau keluar layar ujian selama pengerjaan. Pelanggaran 3x akan mengunci akun otomatis.
@@ -5028,14 +5099,14 @@ function renderSiswaPortal() {
           <div class="mt-5 bg-slate-50 rounded-2xl p-4 border border-slate-200 text-left space-y-2 text-xs">
             <div class="flex justify-between"><span>Paket Ujian:</span><strong>${esc(STATE.activeExamMapel?.nama_mapel)}</strong></div>
             <div class="flex justify-between"><span>Status Penilaian:</span><strong>${esc(res.status || 'Selesai')}</strong></div>
-            ${res.status === 'Selesai'
-              ? `<div class="flex justify-between text-sm pt-2 border-t border-slate-200"><span>Nilai Akhir (Skala 100):</span><strong class="text-blue-700">${res.skor_akhir}</strong></div>`
-              : `<p class="text-[11px] text-amber-700 pt-2 border-t border-slate-200">Terdapat soal Uraian yang menunggu koreksi guru.</p>`}
+          <div class="mt-6 space-y-2.5">
+            <button onclick="CBT.backToKonfirmasi()" class="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-sm shadow">
+              ← Kembali ke Daftar Paket Ujian
+            </button>
+            <button onclick="CBT.logout()" class="w-full py-3 rounded-xl bg-blue-700 hover:bg-blue-800 text-white font-extrabold text-sm shadow">
+              Keluar & Kembali ke Halaman Login
+            </button>
           </div>
-
-          <button onclick="CBT.logout()" class="mt-6 w-full py-3 rounded-xl bg-blue-700 hover:bg-blue-800 text-white font-extrabold text-sm shadow">
-            Keluar & Kembali ke Halaman Login
-          </button>
         </div>
       </main>
     </div>
@@ -7299,6 +7370,11 @@ window.CBT = {
   quickLogin: quickPreviewLogin,
   logout: handleLogout,
   refreshKonfirmasi: () => refreshStudentKonfirmasiData(false),
+  backToKonfirmasi: async () => {
+    STATE.activeExamMapel = null;
+    STATE.siswaStep = 'konfirmasi';
+    await refreshStudentKonfirmasiData(true);
+  },
   startExam: startStudentExam,
   setFontSize: (sz) => { STATE.fontSize = sz; render(); },
   toggleDaftarSoal: (val) => { STATE.showDaftarSoal = (val !== undefined) ? val : !STATE.showDaftarSoal; render(); },
