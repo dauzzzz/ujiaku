@@ -5100,14 +5100,9 @@ function renderSiswaPortal() {
               : `<p class="text-[11px] text-amber-700 pt-2 border-t border-slate-200">Terdapat soal Uraian yang menunggu koreksi guru.</p>`}
           </div>
 
-          <div class="mt-6 space-y-2.5">
-            <button onclick="CBT.backToKonfirmasi()" class="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-sm shadow">
-              ← Kembali ke Daftar Paket Ujian
-            </button>
-            <button onclick="CBT.logout()" class="w-full py-3 rounded-xl bg-blue-700 hover:bg-blue-800 text-white font-extrabold text-sm shadow">
-              Keluar & Kembali ke Halaman Login
-            </button>
-          </div>
+          <button onclick="CBT.logout()" class="mt-6 w-full py-3 rounded-xl bg-blue-700 hover:bg-blue-800 text-white font-extrabold text-sm shadow">
+            Keluar & Kembali ke Halaman Login
+          </button>
         </div>
       </main>
     </div>
@@ -5994,6 +5989,8 @@ function renderAdminContent() {
                   ? `🏫 ${schoolNames[0]}`
                   : `🏫 ${schoolIds.length} Sekolah: ${schoolNames.join(', ')}`);
               const isAktif = m.status === 'Aktif';
+              const mapelGuard = evaluateMapelAccessGuard(m);
+              const isSedangBerlangsung = isAktif && !mapelGuard.blocked;
               const safeId = encodeURIComponent(String(m.id ?? ''));
               const tokenLabel = schoolIds.length === 1
                 ? getSekolahById(schoolIds[0]).token_aktif
@@ -6002,17 +5999,51 @@ function renderAdminContent() {
               const jamSelesai = String(m.jam_selesai || '15:00').slice(0, 5);
               const tglDMY = formatTanggalDMY(m.tanggal_mulai);
               return `
-                <div class="glass-panel rounded-2xl p-5 shadow-sm flex flex-col justify-between gap-3 border ${isAktif ? 'border-emerald-200' : 'border-slate-200'}">
+                <div class="glass-panel rounded-2xl p-5 shadow-sm flex flex-col justify-between gap-3 border ${isSedangBerlangsung ? 'border-emerald-400 ring-1 ring-emerald-200' : (isAktif ? 'border-emerald-200' : 'border-slate-200')}">
                   <div class="space-y-2.5">
                     <div class="flex flex-wrap items-center justify-between gap-2">
                       <div class="flex flex-wrap items-center gap-1.5">
                         <span class="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold ${isAktif ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}">
                           ${isAktif ? '● Aktif' : '○ Ditutup (Draft)'}
                         </span>
+                        ${isSedangBerlangsung ? `
+                          <span class="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-emerald-600 text-white shadow-xs">
+                            ▶ Sedang Berlangsung
+                          </span>
+                        ` : ''}
                         <span class="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[10px] font-bold" title="${esc(cakupanLabel)}">
                           ${esc(cakupanLabel)}
                         </span>
                       </div>
+                      <span class="px-2.5 py-0.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-800 font-mono text-[11px] font-extrabold">
+                        TOKEN: ${esc(tokenLabel)}
+                      </span>
+                    </div>
+
+                    <div>
+                      <h3 class="text-base font-extrabold text-slate-900 leading-snug">${esc(m.nama_mapel)}</h3>
+                      <div class="text-xs text-slate-600 mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                        <span>Kode: <strong class="text-slate-800">${esc(m.kode_mapel)}</strong></span>
+                        <span>|</span>
+                        <span>Kelas: <strong class="text-slate-800">${esc(m.kelas_target)}</strong></span>
+                        <span>|</span>
+                        <span>Durasi: <strong class="text-slate-800">${m.durasi_menit} Menit</strong></span>
+                      </div>
+                      <div class="text-xs font-semibold text-blue-700 mt-1.5">
+                        📅 Jadwal: ${esc(tglDMY)} (${esc(jamMulai)} s.d ${esc(jamSelesai)} WIB)
+                      </div>
+                    </div>
+
+                    ${!isAktif ? `
+                      <div class="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900">
+                        Sesi belum aktif (ujian ditutup). Klik <strong>Aktifkan Ujian</strong> agar paket ini bisa dikerjakan siswa.
+                      </div>
+                    ` : (isSedangBerlangsung ? `
+                      <div class="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-[11px] text-emerald-900 font-semibold">
+                        ▶ <strong>Sedang Berlangsung</strong> — Paket ujian ini sedang aktif tampil di portal siswa sesuai jadwal WIB.
+                      </div>
+                    ` : '')}
+                  </div>
                       <span class="px-2.5 py-0.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-800 font-mono text-[11px] font-extrabold">
                         TOKEN: ${esc(tokenLabel)}
                       </span>
