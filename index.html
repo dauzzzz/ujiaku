@@ -498,6 +498,7 @@ const STATE = {
   fontSize: 'base',
   timeLeftSec: 0,
   timerInterval: null,
+  konfirmasiWatchInterval: null,
   showDaftarSoal: false,
   antiCheatModal: false,
   antiCheatReason: '',
@@ -713,6 +714,7 @@ function evaluateMapelAccessGuard(mapel) {
     const jamMulai = String(mapel.jam_mulai || '00:00').slice(0, 5);
     return {
       blocked: true,
+      notStartedYet: true,
       reason: `Ujian dijadwalkan mulai tanggal ${formatTanggalDMY(mapel.tanggal_mulai)} pukul ${jamMulai} WIB.`,
       startMs,
       endMs
@@ -981,7 +983,7 @@ async function loadStudentScopedData(siswa) {
     STATE.sekolah = studentSchool;
     STATE.ruang = JSON.parse(JSON.stringify(MOCK_DB.ruang_ujian || [])).filter(r => r.sekolah_id === schoolId);
     STATE.sesi = JSON.parse(JSON.stringify(MOCK_DB.sesi_ujian || [])).filter(x => x.sekolah_id === schoolId);
-    STATE.mapelList = JSON.parse(JSON.stringify(MOCK_DB.mapel || [])).filter(m => m.status === 'Aktif' && isMapelForSchool(m, schoolId));
+    STATE.mapelList = JSON.parse(JSON.stringify(MOCK_DB.mapel || [])).filter(m => isMapelForSchool(m, schoolId));
     STATE.jadwalList = JSON.parse(JSON.stringify(MOCK_DB.jadwal_peserta || [])).filter(j => j.siswa_id === siswa.id);
     STATE.hasilList = JSON.parse(JSON.stringify(MOCK_DB.hasil_ujian || [])).filter(h => h.siswa_id === siswa.id);
     return;
@@ -990,7 +992,7 @@ async function loadStudentScopedData(siswa) {
   const [ruangRes, sesiRes, mapelRes, jadwalRes, hasilRes] = await Promise.all([
     sb.from('ruang_ujian').select('id,sekolah_id,kode_ruang,nama_ruang').eq('sekolah_id', schoolId),
     sb.from('sesi_ujian').select('id,sekolah_id,nama_sesi,waktu_mulai,waktu_selesai').eq('sekolah_id', schoolId),
-    sb.from('mapel').select('*').eq('status', 'Aktif'),
+    sb.from('mapel').select('*'),
     sb.from('jadwal_peserta').select('*').eq('siswa_id', siswa.id),
     sb.from('hasil_ujian').select('id,siswa_id,mapel_id,skor_akhir,status,waktu_selesai').eq('siswa_id', siswa.id)
   ]);
@@ -1085,9 +1087,86 @@ function touchMapelCacheVersion(mapelId) {
 }
 
 /* ============================================================================
-   TARGETED REALTIME & FALLBACK POLLING (30 DETIK)
+   TARGETED REALTIME, KONFIRMASI WATCHER & FALLBACK POLLING (30 DETIK)
    ============================================================================ */
+function stopKonfirmasiScheduleWatcher() {
+  if (STATE.konfirmasiWatchInterval) {
+    clearInterval(STATE.konfirmasiWatchInterval);
+    STATE.konfirmasiWatchInterval = null;
+  }
+}
+
+function startKonfirmasiScheduleWatcher() {
+  stopKonfirmasiScheduleWatcher();
+  if (STATE.role !== 'siswa' || STATE.siswaStep !== 'konfirmasi') return;
+
+  let prevOpenMapelIds = new Set(
+    STATE.jadwalList
+      .map(j => STATE.mapelList.find(m => m.id === j.mapel_id))
+      .filter(m => m && !evaluateMapelAccessGuard(m).blocked)
+      .map(m => String(m.id))
+  );
+
+  STATE.konfirmasiWatchInterval = setInterval(() => {
+    if (STATE.role !== 'siswa' || STATE.siswaStep !== 'konfirmasi') {
+      stopKonfirmasiScheduleWatcher();
+      return;
+    }
+
+    const nowMs = Date.now();
+    let statusChanged = false;
+    let newlyUnlocked = false;
+
+    STATE.jadwalList.forEach(j => {
+      const m = STATE.mapelList.find(x => x.id === j.mapel_id);
+      if (!m || j.status_ujian === 'Selesai') return;
+      const guard = evaluateMapelAccessGuard(m);
+      const isNowOpen = !guard.blocked;
+      const key = String(m.id);
+
+      if (isNowOpen && !prevOpenMapelIds.has(key)) {
+        prevOpenMapelIds.add(key);
+        statusChanged = true;
+        newlyUnlocked = true;
+      } else if (!isNowOpen && prevOpenMapelIds.has(key)) {
+        prevOpenMapelIds.delete(key);
+        statusChanged = true;
+      }
+
+      const cdEl = document.getElementById(`cbt-countdown-${m.id}`);
+      if (cdEl && guard.notStartedYet && guard.startMs) {
+        const diffSec = Math.max(0, Math.ceil((guard.startMs - nowMs) / 1000));
+        cdEl.textContent = `Mulai dalam ${formatTime(diffSec)}`;
+      }
+    });
+
+    if (statusChanged) {
+      render();
+      if (newlyUnlocked) {
+        notify("Jadwal ujian sudah aktif! Silakan klik MULAI UJIAN SEKARANG.", "success");
+      }
+    }
+  }, 1000);
+}
+
+async function refreshStudentKonfirmasiData(silent = false) {
+  if (STATE.role !== 'siswa' || !STATE.user) return;
+  try {
+    await loadStudentScopedData(STATE.user);
+    startKonfirmasiScheduleWatcher();
+    render();
+    if (!silent) {
+      notify("Jadwal dan status paket ujian berhasil diperbarui.", "success");
+    }
+  } catch (err) {
+    if (!silent) {
+      notify("Gagal memuat ulang jadwal: " + err.message, "error");
+    }
+  }
+}
+
 function teardownRealtime() {
+  stopKonfirmasiScheduleWatcher();
   if (STATE.realtimeChannel && sb) {
     try { sb.removeChannel(STATE.realtimeChannel); } catch (_) {}
   }
@@ -1110,6 +1189,9 @@ function setupTargetedRealtime() {
 
   if (STATE.role === 'siswa') {
     const siswaId = STATE.user.id;
+    if (STATE.siswaStep === 'konfirmasi') {
+      startKonfirmasiScheduleWatcher();
+    }
 
     if (!IS_PREVIEW && sb) {
       try {
@@ -1126,15 +1208,20 @@ function setupTargetedRealtime() {
             }
           })
           .on('postgres_changes', {
-            event: 'UPDATE',
+            event: '*',
             schema: 'public',
             table: 'jadwal_peserta',
             filter: `siswa_id=eq.${siswaId}`
           }, (payload) => {
-            handleStudentJadwalRemoteUpdate(payload.new);
+            if (payload.eventType === 'DELETE' && payload.old?.id) {
+              STATE.jadwalList = STATE.jadwalList.filter(j => j.id !== payload.old.id);
+              if (STATE.siswaStep === 'konfirmasi') render();
+            } else if (payload.new) {
+              handleStudentJadwalRemoteUpdate(payload.new);
+            }
           })
           .on('postgres_changes', {
-            event: 'UPDATE',
+            event: '*',
             schema: 'public',
             table: 'mapel'
           }, (payload) => {
@@ -1154,6 +1241,10 @@ function setupTargetedRealtime() {
     STATE.fallbackPollInterval = setInterval(async () => {
       if (STATE.role !== 'siswa' || !STATE.user) return;
       try {
+        if (STATE.siswaStep === 'konfirmasi') {
+          await refreshStudentKonfirmasiData(true);
+          return;
+        }
         const activeMapelId = STATE.activeExamMapel?.id;
         if (IS_PREVIEW) {
           const latestJ = (MOCK_DB.jadwal_peserta || []).filter(j => j.siswa_id === siswaId);
@@ -1258,6 +1349,7 @@ function handleStudentJadwalRemoteUpdate(updatedRow) {
       STATE.violationCount = 0;
       STATE.antiCheatModal = false;
       STATE.siswaStep = 'konfirmasi';
+      startKonfirmasiScheduleWatcher();
       notify("Sesi ujian Anda telah di-reset oleh Proktor. Silakan mulai ulang.", "info");
       render();
       return;
@@ -1286,6 +1378,8 @@ function handleStudentMapelRemoteUpdate(updatedMapel) {
   const idx = STATE.mapelList.findIndex(m => String(m.id) === String(updatedMapel.id));
   if (idx >= 0) {
     STATE.mapelList[idx] = { ...STATE.mapelList[idx], ...updatedMapel };
+  } else if (STATE.user?.sekolah_id && isMapelForSchool(updatedMapel, STATE.user.sekolah_id)) {
+    STATE.mapelList.push(updatedMapel);
   }
 
   if (
@@ -1316,6 +1410,7 @@ function handleStudentMapelRemoteUpdate(updatedMapel) {
   }
 
   if (STATE.role === 'siswa' && STATE.siswaStep === 'konfirmasi') {
+    startKonfirmasiScheduleWatcher();
     render();
   }
 }
@@ -1794,6 +1889,7 @@ async function startStudentExam(mapelId) {
       const jadwal = STATE.jadwalList.find(j => j.mapel_id === mapelId);
       const serverViolations = Number(jadwal?.pelanggaran) || 0;
 
+      stopKonfirmasiScheduleWatcher();
       STATE.activeExamMapel = latestMapelMeta;
       STATE.activeExamEndTimeMs = effectiveEndTimeMs;
       STATE.examStimuli = pkgData.stimuli;
@@ -4526,11 +4622,20 @@ function renderSiswaPortal() {
 
               <div class="bg-slate-50/90 rounded-2xl p-4 border border-slate-200 flex flex-col justify-between">
                 <div>
-                  <h3 class="text-xs font-extrabold uppercase tracking-wider text-slate-500 mb-3">Paket Ujian Dijadwalkan</h3>
+                  <div class="flex items-center justify-between gap-2 mb-3">
+                    <h3 class="text-xs font-extrabold uppercase tracking-wider text-slate-500">Paket Ujian Dijadwalkan</h3>
+                    <button type="button" onclick="CBT.refreshKonfirmasi()"
+                      class="px-2.5 py-1 rounded-lg bg-white hover:bg-blue-50 text-blue-700 border border-slate-300 text-[11px] font-bold shadow-xs transition">
+                      ↻ Cek Jadwal
+                    </button>
+                  </div>
                   ${myJadwal.length === 0
                     ? `<p class="text-xs text-slate-500">Belum ada jadwal paket ujian yang ditugaskan untuk akun Anda.</p>`
                     : myJadwal.map(j => {
                       const guard = evaluateMapelAccessGuard(j.mapel);
+                      const initialDiffSec = (guard.notStartedYet && guard.startMs)
+                        ? Math.max(0, Math.ceil((guard.startMs - Date.now()) / 1000))
+                        : 0;
                       return `
                       <div class="bg-white p-4 rounded-2xl border border-slate-200 mb-3 shadow-xs">
                         <div class="font-bold text-sm text-slate-900">${esc(j.mapel.nama_mapel)}</div>
@@ -4542,7 +4647,10 @@ function renderSiswaPortal() {
                           ${j.status_ujian === 'Selesai'
                             ? `<span class="inline-block w-full text-center py-2.5 rounded-xl bg-emerald-100 text-emerald-800 text-xs font-extrabold">✓ Sudah Dikerjakan</span>`
                             : (guard.blocked
-                              ? `<span class="inline-block w-full text-center py-2.5 px-3 rounded-xl bg-amber-100 text-amber-900 border border-amber-300 text-xs font-extrabold">⏸ ${esc(guard.reason)}</span>`
+                              ? `<div class="w-full text-center py-2.5 px-3 rounded-xl bg-amber-100 text-amber-900 border border-amber-300 text-xs font-extrabold space-y-1">
+                                  <div>⏸ ${esc(guard.reason)}</div>
+                                  ${guard.notStartedYet ? `<div id="cbt-countdown-${j.mapel.id}" class="font-mono text-[11px] text-blue-800 bg-white/80 inline-block px-2.5 py-0.5 rounded-md border border-amber-300">Mulai dalam ${formatTime(initialDiffSec)}</div>` : ''}
+                                 </div>`
                               : `<button onclick="CBT.startExam('${j.mapel_id}')" class="w-full py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-extrabold shadow transition">
                                   ${j.status_ujian === 'Sedang Mengerjakan' ? 'LANJUTKAN UJIAN →' : 'MULAI UJIAN SEKARANG →'}
                                  </button>`)}
@@ -6964,6 +7072,7 @@ window.CBT = {
   login: handleLogin,
   quickLogin: quickPreviewLogin,
   logout: handleLogout,
+  refreshKonfirmasi: () => refreshStudentKonfirmasiData(false),
   startExam: startStudentExam,
   setFontSize: (sz) => { STATE.fontSize = sz; render(); },
   toggleDaftarSoal: (val) => { STATE.showDaftarSoal = (val !== undefined) ? val : !STATE.showDaftarSoal; render(); },
