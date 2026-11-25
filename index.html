@@ -6744,20 +6744,35 @@ function renderSingleOfficialCardHtml(siswa) {
   let se = STATE.sesi.find(x => String(x.id) === String(resolvedSesiId));
   if (!se) {
     const schoolSesiList = STATE.sesi.filter(x => String(x.sekolah_id) === String(siswa.sekolah_id));
-    if (schoolSesiList.length === 1) se = schoolSesiList[0];
+    if (schoolSesiList.length > 0) se = schoolSesiList[0];
   }
-  const sesiJam = se ? formatSesiDisplay(se) : 'Sesi Belum Diatur';
   const ruangLabel = r
     ? `${r.kode_ruang} (${r.nama_ruang})`
-    : 'Ruang Belum Diatur';
+    : '-';
+  const sesiNama = se ? String(se.nama_sesi || '').trim() : '';
+  const ruangSesiDisplay = sesiNama ? `${ruangLabel} • ${sesiNama}` : ruangLabel;
+  const defaultMulai = se ? String(se.waktu_mulai || '07:30').slice(0, 5) : '07:30';
+  const defaultSelesai = se ? String(se.waktu_selesai || '09:30').slice(0, 5) : '09:30';
 
-  const studentJadwal = studentJadwalRows
-    .map(j => STATE.mapelList.find(m => m.id === j.mapel_id))
-    .filter(Boolean);
+  // Gabungkan semua mapel yang sudah didistribusikan ke siswa + seluruh mapel yang sesuai sekolah & kelas siswa
+  const mapelMap = new Map();
+  studentJadwalRows.forEach(j => {
+    const m = STATE.mapelList.find(x => String(x.id) === String(j.mapel_id));
+    if (m) mapelMap.set(String(m.id), m);
+  });
+  STATE.mapelList.forEach(m => {
+    if (mapelMap.has(String(m.id))) return;
+    if (!isMapelForSchool(m, siswa.sekolah_id)) return;
+    if (!isMapelForStudentClass(m, siswa.kelas)) return;
+    mapelMap.set(String(m.id), m);
+  });
 
-  const jadwalRows = studentJadwal.length > 0
-    ? studentJadwal
-    : STATE.mapelList.filter(m => isMapelForSchool(m, siswa.sekolah_id));
+  const jadwalRows = Array.from(mapelMap.values()).sort((a, b) => {
+    const dateA = String(a.tanggal_mulai || '');
+    const dateB = String(b.tanggal_mulai || '');
+    if (dateA !== dateB) return dateA.localeCompare(dateB);
+    return String(a.jam_mulai || '00:00').localeCompare(String(b.jam_mulai || '00:00'));
+  });
 
   const sortedExamDates = jadwalRows.map(m => m.tanggal_mulai).filter(Boolean).sort();
   const examDateFromManajemen = sortedExamDates[0] || getWIBNow().toISOString().slice(0, 10);
@@ -6800,7 +6815,7 @@ function renderSingleOfficialCardHtml(siswa) {
         <tr>
           <td class="bio-label">Ruang &amp; Sesi</td>
           <td class="bio-colon">:</td>
-          <td class="bio-room">${esc(ruangLabel)} • ${esc(sesiJam)}</td>
+          <td class="bio-room">${esc(ruangSesiDisplay)}</td>
         </tr>
       </table>
 
@@ -6812,8 +6827,8 @@ function renderSingleOfficialCardHtml(siswa) {
       <table class="cbt-card-table">
         <thead>
           <tr>
-            <th style="width:78px;">Tanggal</th>
-            <th style="width:94px;">Waktu</th>
+            <th style="width:76px;">Tanggal</th>
+            <th style="width:96px;text-align:center;">Waktu (WIB)</th>
             <th>Mata Pelajaran</th>
           </tr>
         </thead>
@@ -6821,16 +6836,20 @@ function renderSingleOfficialCardHtml(siswa) {
           ${jadwalRows.length === 0 ? `
             <tr>
               <td>${esc(formatTanggalSlash(examDateFromManajemen))}</td>
-              <td style="text-align:center;">07:30 - 09:30<br/>WIB</td>
+              <td style="text-align:center;white-space:nowrap;">${esc(defaultMulai)} - ${esc(defaultSelesai)}</td>
               <td><strong>Belum ada paket ujian dijadwalkan</strong></td>
             </tr>
-          ` : jadwalRows.map(m => `
+          ` : jadwalRows.map(m => {
+            const jMulai = m.jam_mulai ? String(m.jam_mulai).slice(0, 5) : defaultMulai;
+            const jSelesai = m.jam_selesai ? String(m.jam_selesai).slice(0, 5) : defaultSelesai;
+            return `
             <tr>
               <td>${esc(formatTanggalSlash(m.tanggal_mulai || examDateFromManajemen))}</td>
-              <td style="text-align:center;">${esc(String(m.jam_mulai || '07:30').slice(0,5))} - ${esc(String(m.jam_selesai || '09:30').slice(0,5))}<br/>WIB</td>
+              <td style="text-align:center;white-space:nowrap;">${esc(jMulai)} - ${esc(jSelesai)}</td>
               <td><strong>${esc(m.nama_mapel)}</strong></td>
             </tr>
-          `).join('')}
+          `;
+          }).join('')}
         </tbody>
       </table>
 
