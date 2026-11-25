@@ -798,25 +798,20 @@ function isMapelForStudentClass(mapel, studentKelas) {
   const target = String(mapel?.kelas_target || '').trim().toLowerCase();
   if (!target || target === 'semua' || target === 'all' || target === '-') return true;
   const sKelas = String(studentKelas || '').trim().toLowerCase();
-  if (!sKelas) return true;
-  const normStudent = sKelas.replace(/^kelas\s+/i, '').trim();
-  const tokens = target
-    .split(/[,;/|]+/)
-    .map(x => x.trim().replace(/^kelas\s+/i, '').trim())
-    .filter(Boolean);
-  return tokens.includes(normStudent);
+  return target.split(/[,;/\s]+/).filter(Boolean).includes(sKelas);
 }
 
-function getStudentScheduledExams() {
+function getAllStudentCandidateExams() {
   const s = STATE.user;
   if (!s) return [];
 
   const byMapelId = new Map();
 
-  // 1. Masukkan seluruh jadwal ujian yang sudah didistribusikan ke siswa ini
+  // 1. Masukkan seluruh jadwal ujian yang sudah didistribusikan ke siswa ini (hanya yang berstatus Aktif)
   (STATE.jadwalList || []).forEach(j => {
     const mapel = STATE.mapelList.find(m => String(m.id) === String(j.mapel_id));
     if (!mapel) return;
+    if (String(mapel.status || '').toLowerCase() !== 'aktif') return;
     byMapelId.set(String(mapel.id), { ...j, mapel });
   });
 
@@ -842,11 +837,20 @@ function getStudentScheduledExams() {
     });
   });
 
-  const items = Array.from(byMapelId.values());
+  return Array.from(byMapelId.values());
+}
+
+function getStudentScheduledExams() {
+  // Hanya tampilkan paket soal yang statusnya Aktif DAN sedang berada dalam rentang hari & jam aktif (WIB)
+  const items = getAllStudentCandidateExams().filter(item => {
+    const guard = evaluateMapelAccessGuard(item.mapel);
+    return !guard.blocked;
+  });
+
   const rank = (item) => {
     if (item.status_ujian === 'Sedang Mengerjakan') return 0;
-    if (item.status_ujian === 'Selesai') return 3;
-    return evaluateMapelAccessGuard(item.mapel).blocked ? 2 : 1;
+    if (item.status_ujian === 'Selesai') return 2;
+    return 1;
   };
   items.sort((a, b) => rank(a) - rank(b));
   return items;
@@ -1178,10 +1182,8 @@ function startKonfirmasiScheduleWatcher() {
   stopKonfirmasiScheduleWatcher();
   if (STATE.role !== 'siswa' || STATE.siswaStep !== 'konfirmasi') return;
 
-  let prevOpenMapelIds = new Set(
-    getStudentScheduledExams()
-      .filter(item => item.mapel && item.status_ujian !== 'Selesai' && !evaluateMapelAccessGuard(item.mapel).blocked)
-      .map(item => String(item.mapel.id))
+  let prevVisibleIds = new Set(
+    getStudentScheduledExams().map(item => String(item.mapel.id))
   );
 
   STATE.konfirmasiWatchInterval = setInterval(() => {
@@ -1190,37 +1192,26 @@ function startKonfirmasiScheduleWatcher() {
       return;
     }
 
-    const nowMs = Date.now();
-    let statusChanged = false;
-    let newlyUnlocked = false;
+    const currentVisible = getStudentScheduledExams();
+    const currentVisibleIds = new Set(currentVisible.map(item => String(item.mapel.id)));
 
-    getStudentScheduledExams().forEach(j => {
-      const m = j.mapel;
-      if (!m || j.status_ujian === 'Selesai') return;
-      const guard = evaluateMapelAccessGuard(m);
-      const isNowOpen = !guard.blocked;
-      const key = String(m.id);
+    let hasNewExam = false;
+    let hasExpiredExam = false;
 
-      if (isNowOpen && !prevOpenMapelIds.has(key)) {
-        prevOpenMapelIds.add(key);
-        statusChanged = true;
-        newlyUnlocked = true;
-      } else if (!isNowOpen && prevOpenMapelIds.has(key)) {
-        prevOpenMapelIds.delete(key);
-        statusChanged = true;
-      }
-
-      const cdEl = document.getElementById(`cbt-countdown-${m.id}`);
-      if (cdEl && guard.notStartedYet && guard.startMs) {
-        const diffSec = Math.max(0, Math.ceil((guard.startMs - nowMs) / 1000));
-        cdEl.textContent = `Mulai dalam ${formatTime(diffSec)}`;
-      }
+    currentVisibleIds.forEach(id => {
+      if (!prevVisibleIds.has(id)) hasNewExam = true;
+    });
+    prevVisibleIds.forEach(id => {
+      if (!currentVisibleIds.has(id)) hasExpiredExam = true;
     });
 
-    if (statusChanged) {
+    if (hasNewExam || hasExpiredExam) {
+      prevVisibleIds = currentVisibleIds;
       render();
-      if (newlyUnlocked) {
-        notify("Jadwal ujian sudah aktif! Silakan klik MULAI UJIAN SEKARANG.", "success");
+      if (hasNewExam) {
+        notify("Paket ujian sudah aktif sesuai jadwal! Silakan klik MULAI UJIAN SEKARANG.", "success");
+      } else if (hasExpiredExam) {
+        notify("Waktu jadwal paket ujian telah berakhir dan otomatis ditutup.", "info");
       }
     }
   }, 1000);
@@ -1948,6 +1939,19 @@ async function startStudentExam(mapelId) {
           }
           return q;
         });
+      }
+
+      const nowMs = Date.now();
+      const durationMs = (Number(latestMapelMeta.durasi_menit) || 60) * 60 * 1000;
+      const durationEndMs = (draft && draft.endTimeMs) ? draft.endTimeMs : (nowMs + durationMs);
+      const effectiveEndTimeMs = accessGuard.endMs !== null
+        ? Math.min(durationEndMs, accessGuard.endMs)
+        : durationEndMs;
+
+      if (effectiveEndTimeMs <= nowMs) {
+        STATE.loading = false;
+        render();
+        return notify(`Batas waktu jadwal ujian (${String(latestMapelMeta.jam_selesai || '').slice(0, 5)} WIB) telah berakhir.`, "error");
       }
 
       let jadwal = STATE.jadwalList.find(j => String(j.mapel_id) === String(mapelId));
@@ -4863,13 +4867,11 @@ function renderSiswaPortal() {
                   </div>
                   <div class="max-h-[420px] overflow-y-auto pr-1">
                   ${myJadwal.length === 0
-                    ? `<p class="text-xs text-slate-500">Belum ada jadwal paket ujian yang ditugaskan untuk akun Anda.</p>`
-                    : myJadwal.map(j => {
-                      const guard = evaluateMapelAccessGuard(j.mapel);
-                      const initialDiffSec = (guard.notStartedYet && guard.startMs)
-                        ? Math.max(0, Math.ceil((guard.startMs - Date.now()) / 1000))
-                        : 0;
-                      return `
+                    ? `<div class="bg-white p-4 rounded-2xl border border-dashed border-slate-300 text-center space-y-1">
+                         <p class="text-xs font-bold text-slate-700">Belum ada paket ujian yang aktif saat ini.</p>
+                         <p class="text-[11px] text-slate-500">Paket soal akan muncul otomatis sesuai tanggal dan jam yang telah dijadwalkan.</p>
+                       </div>`
+                    : myJadwal.map(j => `
                       <div class="bg-white p-4 rounded-2xl border border-slate-200 mb-3 shadow-xs">
                         <div class="font-bold text-sm text-slate-900">${esc(j.mapel.nama_mapel)}</div>
                         <div class="text-xs text-slate-500 mt-1">
@@ -4879,18 +4881,12 @@ function renderSiswaPortal() {
                         <div class="mt-3">
                           ${j.status_ujian === 'Selesai'
                             ? `<span class="inline-block w-full text-center py-2.5 rounded-xl bg-emerald-100 text-emerald-800 text-xs font-extrabold">✓ Sudah Dikerjakan</span>`
-                            : (guard.blocked
-                              ? `<div class="w-full text-center py-2.5 px-3 rounded-xl bg-amber-100 text-amber-900 border border-amber-300 text-xs font-extrabold space-y-1">
-                                  <div>⏸ ${esc(guard.reason)}</div>
-                                  ${guard.notStartedYet ? `<div id="cbt-countdown-${j.mapel.id}" class="font-mono text-[11px] text-blue-800 bg-white/80 inline-block px-2.5 py-0.5 rounded-md border border-amber-300">Mulai dalam ${formatTime(initialDiffSec)}</div>` : ''}
-                                 </div>`
-                              : `<button onclick="CBT.startExam('${j.mapel_id}')" class="w-full py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-extrabold shadow transition">
-                                  ${j.status_ujian === 'Sedang Mengerjakan' ? 'LANJUTKAN UJIAN →' : 'MULAI UJIAN SEKARANG →'}
-                                 </button>`)}
+                            : `<button onclick="CBT.startExam('${j.mapel_id}')" class="w-full py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-extrabold shadow transition">
+                                ${j.status_ujian === 'Sedang Mengerjakan' ? 'LANJUTKAN UJIAN →' : 'MULAI UJIAN SEKARANG →'}
+                               </button>`}
                         </div>
                       </div>
-                    `;
-                    }).join('')}
+                    `).join('')}
                   </div>
                 </div>
                 <p class="text-[11px] text-amber-900 bg-amber-50 border border-amber-200 p-3 rounded-xl mt-2">
@@ -5099,6 +5095,11 @@ function renderSiswaPortal() {
           <div class="mt-5 bg-slate-50 rounded-2xl p-4 border border-slate-200 text-left space-y-2 text-xs">
             <div class="flex justify-between"><span>Paket Ujian:</span><strong>${esc(STATE.activeExamMapel?.nama_mapel)}</strong></div>
             <div class="flex justify-between"><span>Status Penilaian:</span><strong>${esc(res.status || 'Selesai')}</strong></div>
+            ${res.status === 'Selesai'
+              ? `<div class="flex justify-between text-sm pt-2 border-t border-slate-200"><span>Nilai Akhir (Skala 100):</span><strong class="text-blue-700">${res.skor_akhir}</strong></div>`
+              : `<p class="text-[11px] text-amber-700 pt-2 border-t border-slate-200">Terdapat soal Uraian yang menunggu koreksi guru.</p>`}
+          </div>
+
           <div class="mt-6 space-y-2.5">
             <button onclick="CBT.backToKonfirmasi()" class="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-sm shadow">
               ← Kembali ke Daftar Paket Ujian
