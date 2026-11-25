@@ -4176,6 +4176,151 @@ async function saveKoreksiUraian(e, hasilId) {
   }, btn);
 }
 
+function getUnsubmittedSessionsFiltered() {
+  const sid = getEffectiveSchoolFilter();
+  const submittedKeys = new Set(
+    STATE.hasilList.map(h => `${String(h.siswa_id)}__${String(h.mapel_id)}`)
+  );
+  return STATE.jadwalList.filter(j => {
+    if (sid && sid !== 'ALL' && String(j.sekolah_id) !== String(sid)) return false;
+    if (STATE.selectedMapelId && STATE.selectedMapelId !== 'Semua' && String(j.mapel_id) !== String(STATE.selectedMapelId)) return false;
+    if (STATE.selectedKelasFilter && STATE.selectedKelasFilter !== 'Semua') {
+      const s = STATE.siswaList.find(x => String(x.id) === String(j.siswa_id));
+      if (!s || s.kelas !== STATE.selectedKelasFilter) return false;
+    }
+    const isOngoingOrLocked = j.status_ujian === 'Sedang Mengerjakan' || j.status_ujian === 'Terkunci';
+    if (!isOngoingOrLocked) return false;
+    return !submittedKeys.has(`${String(j.siswa_id)}__${String(j.mapel_id)}`);
+  });
+}
+
+function tarikNilaiSesiBelumTerkirim() {
+  const targets = getUnsubmittedSessionsFiltered();
+  if (!targets.length) {
+    return notify("Tidak ada sesi peserta berstatus Sedang Mengerjakan / Terkunci yang belum terkirim pada filter ini.", "info");
+  }
+
+  askConfirm(
+    "Tarik Nilai Sesi Belum Terkirim",
+    `Ditemukan ${targets.length} sesi peserta (Sedang Mengerjakan / Terkunci) yang belum mengirim jawaban. Tarik & finalisasi nilai mereka sekarang? Status ujian peserta tersebut akan diselesaikan otomatis.`,
+    async () => {
+      await runWithBusyLock('tarik-nilai-sesi', async () => {
+        try {
+          const mapelIds = [...new Set(targets.map(j => String(j.mapel_id)).filter(Boolean))];
+          const soalByMapel = {};
+
+          for (const mId of mapelIds) {
+            if (IS_PREVIEW) {
+              soalByMapel[mId] = (MOCK_DB.soal || [])
+                .filter(q => String(q.mapel_id) === mId)
+                .sort((a, b) => a.nomor_urut - b.nomor_urut);
+            } else if (sb) {
+              const { data, error } = await sb
+                .from('soal')
+                .select('*')
+                .eq('mapel_id', mId)
+                .order('nomor_urut', { ascending: true });
+              if (error) throw error;
+              soalByMapel[mId] = data || [];
+            }
+          }
+
+          const hasilPayloads = [];
+          const nowIso = new Date().toISOString();
+
+          for (const j of targets) {
+            const soalListMapel = soalByMapel[String(j.mapel_id)] || [];
+            let recoveredAnswers = {};
+            const draftKey = `cbt_draft_${j.siswa_id}_${j.mapel_id}`;
+            try {
+              const rawDraft = localStorage.getItem(draftKey);
+              if (rawDraft) {
+                const parsed = JSON.parse(rawDraft);
+                if (parsed && parsed.answers && typeof parsed.answers === 'object') {
+                  recoveredAnswers = parsed.answers;
+                }
+              }
+            } catch (_) {}
+
+            const calc = calculateExamResult(soalListMapel, recoveredAnswers);
+            hasilPayloads.push({
+              sekolah_id: j.sekolah_id,
+              siswa_id: j.siswa_id,
+              mapel_id: j.mapel_id,
+              ...calc,
+              waktu_selesai: nowIso
+            });
+          }
+
+          if (hasilPayloads.length > 0) {
+            await dbUpsert('hasil_ujian', hasilPayloads, 'siswa_id,mapel_id');
+          }
+
+          for (const j of targets) {
+            await dbUpdate('jadwal_peserta', j.id, { status_ujian: 'Selesai' }, j.sekolah_id || null);
+            try {
+              localStorage.removeItem(`cbt_draft_${j.siswa_id}_${j.mapel_id}`);
+            } catch (_) {}
+          }
+
+          await loadRoleScopedData();
+          notify(`Berhasil menarik & memfinalisasi nilai dari ${targets.length} sesi peserta!`, "success");
+        } catch (err) {
+          notify("Gagal menarik nilai sesi: " + err.message, "error");
+        }
+      });
+    },
+    `Ya, Tarik ${targets.length} Sesi`,
+    false
+  );
+}
+
+function clearRiwayatHasil() {
+  const list = getFilteredHasil();
+  if (!list.length) {
+    return notify("Tidak ada riwayat hasil ujian pada filter saat ini untuk dibersihkan.", "info");
+  }
+
+  const scopeDesc = (STATE.selectedMapelId && STATE.selectedMapelId !== 'Semua')
+    ? `pada paket ujian terpilih`
+    : `pada seluruh paket ujian terfilter`;
+
+  askConfirm(
+    "Bersihkan Riwayat Nilai Ujian",
+    `Apakah Anda yakin ingin menghapus ${list.length} riwayat nilai ${scopeDesc}? Status ujian peserta terkait juga akan dikembalikan ke "Belum Mulai" agar dapat mengikuti ujian kembali bila diperlukan.`,
+    async () => {
+      await runWithBusyLock('clear-riwayat-hasil', async () => {
+        try {
+          const hasilIds = list.map(h => h.id).filter(Boolean);
+          await dbDelete('hasil_ujian', hasilIds);
+
+          for (const h of list) {
+            const jRow = STATE.jadwalList.find(
+              j => String(j.siswa_id) === String(h.siswa_id) && String(j.mapel_id) === String(h.mapel_id)
+            );
+            if (jRow) {
+              await dbUpdate('jadwal_peserta', jRow.id, {
+                status_ujian: 'Belum Mulai',
+                pelanggaran: 0
+              }, jRow.sekolah_id || null);
+            }
+            try {
+              localStorage.removeItem(`cbt_draft_${h.siswa_id}_${h.mapel_id}`);
+            } catch (_) {}
+          }
+
+          await loadRoleScopedData();
+          notify(`Berhasil membersihkan ${hasilIds.length} riwayat hasil ujian.`, "success");
+        } catch (err) {
+          notify("Gagal membersihkan riwayat nilai: " + err.message, "error");
+        }
+      });
+    },
+    `Ya, Bersihkan (${list.length})`,
+    true
+  );
+}
+
 /* ============================================================================
    FUNGSI CETAK KARTU & LAPORAN UKURAN F4 / FOLIO & A4
    ============================================================================ */
@@ -4356,13 +4501,19 @@ function downloadKartuF4Html() {
 function printRekapF4() {
   const list = getFilteredHasil();
   if (!list.length) return notify("Belum ada data nilai untuk dicetak.", "error");
+  const isAllSchools = !STATE.activeSekolahId || STATE.activeSekolahId === 'ALL';
   const sek = getSekolahById(STATE.activeSekolahId);
+  const headerSchoolText = isAllSchools
+    ? `LINTAS SEKOLAH (${STATE.sekolahList.length} SATUAN PENDIDIKAN)`
+    : `${sek.nama_sekolah} (NPSN: ${sek.npsn})`;
   const pageSizeRule = STATE.cardPaperSize === 'A4' ? 'size: A4 portrait; margin: 10mm;' : 'size: 215mm 330mm; margin: 12mm;';
   const rowsHtml = list.map((h, idx) => {
     const s = STATE.siswaList.find(x => x.id === h.siswa_id) || {};
+    const studentSek = getSekolahById(h.sekolah_id || s.sekolah_id);
     const m = STATE.mapelList.find(x => x.id === h.mapel_id) || {};
     return `<tr>
       <td style="text-align:center">${idx + 1}</td>
+      <td>${esc(studentSek.nama_sekolah || '-')}</td>
       <td>${esc(s.username || '-')}</td>
       <td><strong>${esc(s.nama_lengkap || '-')}</strong></td>
       <td style="text-align:center">${esc(s.kelas || '-')}</td>
@@ -4384,9 +4535,9 @@ function printRekapF4() {
   th { background: #F1F5F9; font-weight: bold; }
 </style></head><body>
   <h2>REKAPITULASI NILAI ASESMEN BERBASIS KOMPUTER (CBT)</h2>
-  <p style="margin-top:4px;font-weight:bold;">${esc(sek.nama_sekolah)} (NPSN: ${esc(sek.npsn)})</p>
+  <p style="margin-top:4px;font-weight:bold;">${esc(headerSchoolText)}</p>
   <table>
-    <thead><tr><th>No</th><th>NISN</th><th>Nama Peserta</th><th>Kelas</th><th>Paket Ujian</th><th>B/P/S/K</th><th>Nilai</th><th>Status</th></tr></thead>
+    <thead><tr><th>No</th><th>Asal Sekolah</th><th>NISN</th><th>Nama Peserta</th><th>Kelas</th><th>Paket Ujian</th><th>B/P/S/K</th><th>Nilai</th><th>Status</th></tr></thead>
     <tbody>${rowsHtml}</tbody>
   </table>
 </body></html>`;
@@ -6260,6 +6411,7 @@ function renderAdminContent() {
 
   if (t === 'hasil') {
     const list = getFilteredHasil();
+    const unsubmittedSessions = getUnsubmittedSessionsFiltered();
     const koreksiTarget = STATE.koreksiHasilId ? STATE.hasilList.find(h => h.id === STATE.koreksiHasilId) : null;
 
     const itemStats = STATE.soalList.map(q => {
@@ -6285,8 +6437,18 @@ function renderAdminContent() {
                 <option value="Semua">Semua Paket Ujian</option>
                 ${STATE.mapelList.map(m => `<option value="${m.id}" ${STATE.selectedMapelId===m.id?'selected':''}>${esc(m.nama_mapel)}</option>`).join('')}
               </select>
-              <button onclick="CBT.exportHasilExcel()" class="px-3 py-1.5 rounded-xl bg-emerald-600 text-white text-xs font-bold">⬇ Export Rekap Excel</button>
-              <button onclick="CBT.printRekapF4()" class="px-3 py-1.5 rounded-xl bg-blue-700 text-white text-xs font-bold">🖨 Cetak Laporan F4</button>
+              <button type="button" onclick="CBT.tarikNilaiBelumTerkirim()"
+                title="Tarik dan finalisasi nilai peserta yang masih berstatus Sedang Mengerjakan / Terkunci"
+                class="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold shadow-xs transition">
+                🔄 Tarik Nilai Belum Terkirim (${unsubmittedSessions.length})
+              </button>
+              <button type="button" onclick="CBT.clearRiwayatHasil()"
+                title="Hapus riwayat nilai pada filter terpilih"
+                class="px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold shadow-xs transition">
+                🗑 Bersihkan Riwayat (${list.length})
+              </button>
+              <button onclick="CBT.exportHasilExcel()" class="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold">⬇ Export Rekap Excel</button>
+              <button onclick="CBT.printRekapF4()" class="px-3 py-1.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold">🖨 Cetak Laporan F4</button>
             </div>
           </div>
 
@@ -7426,6 +7588,8 @@ window.CBT = {
   },
   closeKoreksi: () => { STATE.koreksiHasilId = null; render(); },
   saveKoreksi: saveKoreksiUraian,
+  tarikNilaiBelumTerkirim: tarikNilaiSesiBelumTerkirim,
+  clearRiwayatHasil,
   exportHasilExcel,
   setKelasFilter: (kls) => { STATE.selectedKelasFilter = kls; render(); },
   setCardPrintMode: (mode) => { STATE.cardPrintMode = mode; render(); },
