@@ -683,19 +683,33 @@ function getMapelScheduleBoundsWIB(mapel) {
   const isoDate = parseDMYToISO(mapel.tanggal_mulai, null);
   if (!isoDate) return { startMs: null, endMs: null };
 
-  const normalizeHHMMSS = (val, fallback) => {
-    const clean = String(val || fallback).trim();
+  const parseTimeParts = (val, defH, defM, defS) => {
+    const clean = String(val || '').trim();
+    if (!clean) return { hh: defH, mm: defM, ss: defS, hasExplicitSec: false };
     const parts = clean.split(':');
-    const hh = String(parts[0] || '00').padStart(2, '0');
-    const mm = String(parts[1] || '00').padStart(2, '0');
-    const ss = String(parts[2] || '00').padStart(2, '0').slice(0, 2);
-    return `${hh}:${mm}:${ss}`;
+    const hh = String(parts[0] ?? defH).padStart(2, '0');
+    const mm = String(parts[1] ?? defM).padStart(2, '0');
+    const rawSec = parts[2] !== undefined ? String(parts[2]).slice(0, 2) : '';
+    const hasExplicitSec = rawSec !== '' && rawSec !== '00';
+    const ss = rawSec ? rawSec.padStart(2, '0') : defS;
+    return { hh, mm, ss, hasExplicitSec };
   };
 
-  const startStr = mapel.jam_mulai ? `${isoDate}T${normalizeHHMMSS(mapel.jam_mulai, '00:00:00')}+07:00` : null;
-  const endStr = mapel.jam_selesai ? `${isoDate}T${normalizeHHMMSS(mapel.jam_selesai, '23:59:59')}+07:00` : null;
+  const sPart = mapel.jam_mulai ? parseTimeParts(mapel.jam_mulai, '00', '00', '00') : null;
+  const ePart = mapel.jam_selesai ? parseTimeParts(mapel.jam_selesai, '23', '59', '59') : null;
+
+  const startStr = sPart ? `${isoDate}T${sPart.hh}:${sPart.mm}:${sPart.ss}.000+07:00` : null;
+  // Jika jam_selesai diset tanpa detik spesifik (misal 00:47 / 00:47:00), berlaku penuh sampai akhir menit (:59.999)
+  const endSec = ePart ? (ePart.hasExplicitSec ? ePart.ss : '59') : '59';
+  const endStr = ePart ? `${isoDate}T${ePart.hh}:${ePart.mm}:${endSec}.999+07:00` : null;
+
   const startMs = startStr ? Date.parse(startStr) : null;
-  const endMs = endStr ? Date.parse(endStr) : null;
+  let endMs = endStr ? Date.parse(endStr) : null;
+
+  // Tangani jadwal yang melewati tengah malam (misal 23:30 s.d 01:00)
+  if (Number.isFinite(startMs) && Number.isFinite(endMs) && endMs < startMs) {
+    endMs += 24 * 60 * 60 * 1000;
+  }
 
   return {
     startMs: Number.isFinite(startMs) ? startMs : null,
@@ -797,8 +811,27 @@ function isMapelForSchool(mapel, schoolId) {
 function isMapelForStudentClass(mapel, studentKelas) {
   const target = String(mapel?.kelas_target || '').trim().toLowerCase();
   if (!target || target === 'semua' || target === 'all' || target === '-') return true;
-  const sKelas = String(studentKelas || '').trim().toLowerCase();
-  return target.split(/[,;/\s]+/).filter(Boolean).includes(sKelas);
+
+  const normalizeKelasToken = (val) => {
+    const cleaned = String(val || '')
+      .trim()
+      .toLowerCase()
+      .replace(/^(kelas|kls)\.?\s*/i, '')
+      .trim();
+    const romanMap = {
+      '1': 'i', '2': 'ii', '3': 'iii', '4': 'iv', '5': 'v', '6': 'vi',
+      '7': 'vii', '8': 'viii', '9': 'ix', '10': 'x', '11': 'xi', '12': 'xii'
+    };
+    return romanMap[cleaned] || cleaned;
+  };
+
+  const sKelasNorm = normalizeKelasToken(studentKelas);
+  const targetTokens = target
+    .split(/[,;/]+/)
+    .map(normalizeKelasToken)
+    .filter(Boolean);
+
+  return targetTokens.includes(sKelasNorm);
 }
 
 function getAllStudentCandidateExams() {
@@ -1074,7 +1107,7 @@ async function loadStudentScopedData(siswa) {
     sb.from('jadwal_peserta').select('*').eq('siswa_id', siswa.id),
     sb.from('hasil_ujian').select('id,siswa_id,mapel_id,skor_akhir,status,waktu_selesai').eq('siswa_id', siswa.id)
   ]);
-
+  if (mapelRes.error) throw mapelRes.error;
   if (jadwalRes.error) throw jadwalRes.error;
   if (hasilRes.error) throw hasilRes.error;
 
