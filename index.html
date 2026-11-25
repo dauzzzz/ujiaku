@@ -1065,17 +1065,6 @@ async function loadInitialData() {
       STATE.activeSekolahId = STATE.sekolahList[0].id;
     }
     STATE.sekolah = getSekolahById(STATE.activeSekolahId);
-
-    if (IS_PREVIEW) {
-      STATE.mapelList = JSON.parse(JSON.stringify(MOCK_DB.mapel || [])).filter(m => m.status === 'Aktif');
-    } else if (sb) {
-      const { data: activeExams, error } = await sb
-        .from('mapel')
-        .select('*')
-        .eq('status', 'Aktif')
-        .order('nama_mapel', { ascending: true });
-      if (!error) STATE.mapelList = activeExams || [];
-    }
   } catch (err) {
     console.error(err);
     notify("Gagal memuat konfigurasi awal: " + err.message, "error");
@@ -1202,7 +1191,7 @@ function touchMapelCacheVersion(mapelId) {
 }
 
 /* ============================================================================
-   TARGETED REALTIME, KONFIRMASI WATCHER & FALLBACK POLLING (30 DETIK)
+   TARGETED REALTIME (ADMIN/PROKTOR), KONFIRMASI WATCHER & MODE HEMAT SISWA
    ============================================================================ */
 function stopKonfirmasiScheduleWatcher() {
   if (STATE.konfirmasiWatchInterval) {
@@ -1250,6 +1239,60 @@ function startKonfirmasiScheduleWatcher() {
   }, 1000);
 }
 
+async function pollStudentKonfirmasiLite() {
+  if (STATE.role !== 'siswa' || !STATE.user || STATE.siswaStep !== 'konfirmasi') return;
+  const siswaId = STATE.user.id;
+  const schoolId = STATE.user.sekolah_id;
+
+  if (IS_PREVIEW) {
+    const latestJadwal = JSON.parse(JSON.stringify(MOCK_DB.jadwal_peserta || [])).filter(j => j.siswa_id === siswaId);
+    const assignedIds = new Set(latestJadwal.map(j => String(j.mapel_id)));
+    const latestMapel = JSON.parse(JSON.stringify(MOCK_DB.mapel || [])).filter(
+      m => isMapelForSchool(m, schoolId) || assignedIds.has(String(m.id))
+    );
+    const prevSnap = JSON.stringify({ m: STATE.mapelList, j: STATE.jadwalList });
+    STATE.jadwalList = latestJadwal;
+    STATE.mapelList = latestMapel;
+    if (prevSnap !== JSON.stringify({ m: STATE.mapelList, j: STATE.jadwalList })) {
+      startKonfirmasiScheduleWatcher();
+      render();
+    }
+    return;
+  }
+
+  if (!sb) return;
+  const mapelCols = 'id,sekolah_id,sekolah_ids,kode_mapel,nama_mapel,kelas_target,durasi_menit,tanggal_mulai,jam_mulai,jam_selesai,acak_soal,acak_opsi,status,updated_at';
+  const [mRes, jRes] = await Promise.all([
+    sb.from('mapel').select(mapelCols),
+    sb.from('jadwal_peserta').select('id,sekolah_id,siswa_id,mapel_id,ruang_id,sesi_id,status_ujian,pelanggaran').eq('siswa_id', siswaId)
+  ]);
+
+  if (mRes.error || jRes.error) return;
+  const latestJadwal = jRes.data || [];
+  const assignedIds = new Set(latestJadwal.map(j => String(j.mapel_id)));
+  const latestMapel = (mRes.data || []).filter(
+    m => isMapelForSchool(m, schoolId) || assignedIds.has(String(m.id))
+  );
+
+  const prevSnap = JSON.stringify({
+    m: (STATE.mapelList || []).map(x => `${x.id}:${x.status}:${x.tanggal_mulai}:${x.jam_mulai}:${x.jam_selesai}:${x.updated_at || ''}`),
+    j: (STATE.jadwalList || []).map(x => `${x.id}:${x.mapel_id}:${x.status_ujian}:${x.pelanggaran}`)
+  });
+
+  STATE.jadwalList = latestJadwal;
+  STATE.mapelList = latestMapel;
+
+  const nextSnap = JSON.stringify({
+    m: latestMapel.map(x => `${x.id}:${x.status}:${x.tanggal_mulai}:${x.jam_mulai}:${x.jam_selesai}:${x.updated_at || ''}`),
+    j: latestJadwal.map(x => `${x.id}:${x.mapel_id}:${x.status_ujian}:${x.pelanggaran}`)
+  });
+
+  if (prevSnap !== nextSnap) {
+    startKonfirmasiScheduleWatcher();
+    render();
+  }
+}
+
 async function refreshStudentKonfirmasiData(silent = false) {
   if (STATE.role !== 'siswa' || !STATE.user) return;
   try {
@@ -1290,86 +1333,50 @@ function setupTargetedRealtime() {
 
   if (STATE.role === 'siswa') {
     const siswaId = STATE.user.id;
+    // Mode Hemat: Siswa tidak membuka koneksi Realtime Supabase (aman untuk 250+ siswa/sesi di Free Tier)
     if (STATE.siswaStep === 'konfirmasi') {
       startKonfirmasiScheduleWatcher();
     }
 
-    if (!IS_PREVIEW && sb) {
-      try {
-        const ch = sb.channel(`cbt-student-${siswaId}`)
-          .on('postgres_changes', {
-            event: 'UPDATE',
-            schema: 'public',
-            table: 'siswa',
-            filter: `id=eq.${siswaId}`
-          }, (payload) => {
-            if (payload.new) {
-              STATE.user = { ...STATE.user, ...payload.new };
-              render();
-            }
-          })
-          .on('postgres_changes', {
-            event: '*',
-            schema: 'public',
-            table: 'jadwal_peserta',
-            filter: `siswa_id=eq.${siswaId}`
-          }, (payload) => {
-            if (payload.eventType === 'DELETE' && payload.old?.id) {
-              STATE.jadwalList = STATE.jadwalList.filter(j => j.id !== payload.old.id);
-              if (STATE.siswaStep === 'konfirmasi') render();
-            } else if (payload.new) {
-              handleStudentJadwalRemoteUpdate(payload.new);
-            }
-          })
-          .on('postgres_changes', {
-            event: '*',
-            schema: 'public',
-            table: 'mapel'
-          }, (payload) => {
-            if (payload.new) {
-              handleStudentMapelRemoteUpdate(payload.new);
-            }
-          })
-          .subscribe((status) => {
-            STATE.realtimeConnected = (status === 'SUBSCRIBED');
-          });
-        STATE.realtimeChannel = ch;
-      } catch (_) {
-        STATE.realtimeConnected = false;
-      }
-    }
-
+    let examPollTick = 0;
     STATE.fallbackPollInterval = setInterval(async () => {
       if (STATE.role !== 'siswa' || !STATE.user) return;
       try {
+        // Saat di halaman Konfirmasi: Polling ringan tiap 60 detik untuk sinkronisasi perubahan Draft -> Aktif / jadwal baru
         if (STATE.siswaStep === 'konfirmasi') {
-          await refreshStudentKonfirmasiData(true);
+          await pollStudentKonfirmasiLite();
           return;
         }
-        const activeMapelId = STATE.activeExamMapel?.id;
-        if (IS_PREVIEW) {
-          const latestJ = (MOCK_DB.jadwal_peserta || []).filter(j => j.siswa_id === siswaId);
-          latestJ.forEach(handleStudentJadwalRemoteUpdate);
-          if (activeMapelId) {
-            const latestM = (MOCK_DB.mapel || []).find(m => m.id === activeMapelId);
-            if (latestM) handleStudentMapelRemoteUpdate(latestM);
+        // Saat sedang Ujian: Polling status reset/jadwal tiap 120 detik (setiap 2 siklus)
+        if (STATE.siswaStep === 'ujian') {
+          examPollTick++;
+          if (examPollTick % 2 !== 0) return;
+
+          const activeMapelId = STATE.activeExamMapel?.id;
+          if (IS_PREVIEW) {
+            const latestJ = (MOCK_DB.jadwal_peserta || []).filter(j => j.siswa_id === siswaId);
+            latestJ.forEach(handleStudentJadwalRemoteUpdate);
+            if (activeMapelId) {
+              const latestM = (MOCK_DB.mapel || []).find(m => m.id === activeMapelId);
+              if (latestM) handleStudentMapelRemoteUpdate(latestM);
+            }
+            return;
           }
-          return;
+          if (!sb) return;
+          const queries = [
+            sb.from('jadwal_peserta').select('id,mapel_id,status_ujian,pelanggaran').eq('siswa_id', siswaId)
+          ];
+          if (activeMapelId) {
+            queries.push(
+              sb.from('mapel').select('id,status,tanggal_mulai,jam_mulai,jam_selesai,durasi_menit').eq('id', activeMapelId).maybeSingle()
+            );
+          }
+          const [jRes, mRes] = await Promise.all(queries);
+          if (jRes?.data) jRes.data.forEach(handleStudentJadwalRemoteUpdate);
+          if (mRes?.data) handleStudentMapelRemoteUpdate(mRes.data);
         }
-        if (!sb) return;
-        const queries = [
-          sb.from('jadwal_peserta').select('id,mapel_id,status_ujian,pelanggaran').eq('siswa_id', siswaId)
-        ];
-        if (activeMapelId) {
-          queries.push(
-            sb.from('mapel').select('id,status,tanggal_mulai,jam_mulai,jam_selesai,durasi_menit').eq('id', activeMapelId).maybeSingle()
-          );
-        }
-        const [jRes, mRes] = await Promise.all(queries);
-        if (jRes?.data) jRes.data.forEach(handleStudentJadwalRemoteUpdate);
-        if (mRes?.data) handleStudentMapelRemoteUpdate(mRes.data);
       } catch (_) {}
-    }, 30000);
+    }, 60000);
     return;
   }
 
@@ -1420,15 +1427,17 @@ function setupTargetedRealtime() {
       }
     }
 
+    // Fallback polling Admin/Proktor hanya berjalan jika koneksi Realtime sedang tidak terhubung
     STATE.fallbackPollInterval = setInterval(async () => {
       if (!STATE.role || STATE.role === 'siswa') return;
+      if (!IS_PREVIEW && STATE.realtimeConnected) return;
       try {
         const cols = 'id,sekolah_id,siswa_id,mapel_id,ruang_id,sesi_id,status_ujian,pelanggaran';
         const latestJadwal = await dbSelect('jadwal_peserta', null, lockedSchoolId, cols);
         STATE.jadwalList = latestJadwal;
         if (STATE.adminTab === 'dashboard' || STATE.role === 'proktor') render();
       } catch (_) {}
-    }, 30000);
+    }, 60000);
   }
 }
 
