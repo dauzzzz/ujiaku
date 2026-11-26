@@ -563,6 +563,52 @@ function chunkArray(items, size = CHUNK_SIZE) {
 
 function sleepMs(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
+function getOrCreateDeviceId() {
+  const key = 'cbt_device_id';
+  try {
+    let id = localStorage.getItem(key);
+    if (!id) {
+      id = `dev_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+      localStorage.setItem(key, id);
+    }
+    return id;
+  } catch (_) {
+    return `dev_mem_${Date.now().toString(36)}`;
+  }
+}
+
+async function setStudentActiveSession(siswaId, sessionToken, enforceSchoolId = null) {
+  if (!siswaId) return;
+  const payload = {
+    active_session_token: sessionToken,
+    ...(sessionToken ? { last_login_at: new Date().toISOString() } : {})
+  };
+  if (IS_PREVIEW) {
+    const idx = (MOCK_DB.siswa || []).findIndex(s => String(s.id) === String(siswaId));
+    if (idx >= 0) {
+      MOCK_DB.siswa[idx].active_session_token = sessionToken;
+      if (sessionToken) MOCK_DB.siswa[idx].last_login_at = payload.last_login_at;
+    }
+  } else if (sb) {
+    let q = sb.from('siswa').update(payload).eq('id', siswaId);
+    if (enforceSchoolId) q = q.eq('sekolah_id', enforceSchoolId);
+    const { error } = await q;
+    if (error) {
+      const msg = String(error.message || '');
+      if (msg.includes('active_session_token') || msg.includes('last_login_at') || msg.includes('schema cache')) {
+        console.warn('Kolom active_session_token belum tersedia di tabel siswa Supabase. Jalankan migrasi SQL terbaru.');
+        return;
+      }
+      throw error;
+    }
+  }
+  const sIdx = STATE.siswaList.findIndex(s => String(s.id) === String(siswaId));
+  if (sIdx >= 0) STATE.siswaList[sIdx].active_session_token = sessionToken;
+  if (STATE.user && String(STATE.user.id) === String(siswaId)) {
+    STATE.user.active_session_token = sessionToken;
+  }
+}
+
 function renderToastOnly() {
   const box = document.getElementById('cbt-toast-container');
   if (!box) return;
@@ -1320,8 +1366,18 @@ async function pollStudentKonfirmasiLite() {
   if (STATE.role !== 'siswa' || !STATE.user || STATE.siswaStep !== 'konfirmasi') return;
   const siswaId = STATE.user.id;
   const schoolId = STATE.user.sekolah_id;
+  const localDeviceId = getOrCreateDeviceId();
 
   if (IS_PREVIEW) {
+    const remoteSiswa = (MOCK_DB.siswa || []).find(s => String(s.id) === String(siswaId));
+    if (remoteSiswa && remoteSiswa.active_session_token && remoteSiswa.active_session_token !== localDeviceId) {
+      await handleLogout(true);
+      showInfoModal(
+        "Sesi Login Berakhir",
+        "Akun Anda terdeteksi aktif di perangkat lain atau telah di-reset oleh Proktor."
+      );
+      return;
+    }
     const latestJadwal = JSON.parse(JSON.stringify(MOCK_DB.jadwal_peserta || [])).filter(j => j.siswa_id === siswaId);
     const assignedIds = new Set(latestJadwal.map(j => String(j.mapel_id)));
     const latestMapel = JSON.parse(JSON.stringify(MOCK_DB.mapel || [])).filter(
@@ -1339,10 +1395,23 @@ async function pollStudentKonfirmasiLite() {
 
   if (!sb) return;
   const mapelCols = 'id,sekolah_id,sekolah_ids,kode_mapel,nama_mapel,kelas_target,durasi_menit,tanggal_mulai,jam_mulai,jam_selesai,acak_soal,acak_opsi,status,updated_at';
-  const [mRes, jRes] = await Promise.all([
+  const [mRes, jRes, sRes] = await Promise.all([
     sb.from('mapel').select(mapelCols),
-    sb.from('jadwal_peserta').select('id,sekolah_id,siswa_id,mapel_id,ruang_id,sesi_id,status_ujian,pelanggaran').eq('siswa_id', siswaId)
+    sb.from('jadwal_peserta').select('id,sekolah_id,siswa_id,mapel_id,ruang_id,sesi_id,status_ujian,pelanggaran').eq('siswa_id', siswaId),
+    sb.from('siswa').select('active_session_token').eq('id', siswaId).maybeSingle()
   ]);
+
+  if (!sRes?.error && sRes?.data) {
+    const remoteToken = sRes.data.active_session_token;
+    if (remoteToken && remoteToken !== localDeviceId) {
+      await handleLogout(true);
+      showInfoModal(
+        "Sesi Login Berakhir",
+        "Akun Anda terdeteksi aktif di perangkat lain atau telah di-reset oleh Proktor."
+      );
+      return;
+    }
+  }
 
   if (mRes.error || jRes.error) return;
   const latestJadwal = jRes.data || [];
@@ -1479,7 +1548,17 @@ function setupTargetedRealtime() {
           if (examPollTick % 2 !== 0) return;
 
           const activeMapelId = STATE.activeExamMapel?.id;
+          const localDeviceId = getOrCreateDeviceId();
           if (IS_PREVIEW) {
+            const remoteSiswa = (MOCK_DB.siswa || []).find(s => String(s.id) === String(siswaId));
+            if (remoteSiswa && remoteSiswa.active_session_token && remoteSiswa.active_session_token !== localDeviceId) {
+              await handleLogout(true);
+              showInfoModal(
+                "Sesi Login Berakhir",
+                "Akun Anda telah dipindahkan ke perangkat lain setelah Reset Login oleh Proktor."
+              );
+              return;
+            }
             const latestJ = (MOCK_DB.jadwal_peserta || []).filter(j => j.siswa_id === siswaId);
             latestJ.forEach(handleStudentJadwalRemoteUpdate);
             if (activeMapelId) {
@@ -1490,14 +1569,23 @@ function setupTargetedRealtime() {
           }
           if (!sb) return;
           const queries = [
-            sb.from('jadwal_peserta').select('id,mapel_id,status_ujian,pelanggaran').eq('siswa_id', siswaId)
+            sb.from('jadwal_peserta').select('id,mapel_id,status_ujian,pelanggaran').eq('siswa_id', siswaId),
+            sb.from('siswa').select('active_session_token').eq('id', siswaId).maybeSingle()
           ];
           if (activeMapelId) {
             queries.push(
               sb.from('mapel').select('id,status,tanggal_mulai,jam_mulai,jam_selesai,durasi_menit').eq('id', activeMapelId).maybeSingle()
             );
           }
-          const [jRes, mRes] = await Promise.all(queries);
+          const [jRes, sRes, mRes] = await Promise.all(queries);
+          if (!sRes?.error && sRes?.data?.active_session_token && sRes.data.active_session_token !== localDeviceId) {
+            await handleLogout(true);
+            showInfoModal(
+              "Sesi Login Berakhir",
+              "Akun Anda telah dipindahkan ke perangkat lain setelah Reset Login oleh Proktor."
+            );
+            return;
+          }
           if (jRes?.data) jRes.data.forEach(handleStudentJadwalRemoteUpdate);
           if (mRes?.data) handleStudentMapelRemoteUpdate(mRes.data);
         }
@@ -1925,8 +2013,17 @@ async function handleLogin(e) {
           return notify("AKUN TERKUNCI! Anda terdeteksi keluar aplikasi/pindah tab. Hubungi Proktor sekolah Anda untuk Reset Login.", "error");
         }
 
+        // Validasi Kunci Sesi Tunggal Perangkat (Single-Device Login Lock)
+        const localDeviceId = getOrCreateDeviceId();
+        const remoteSessionToken = String(siswa.active_session_token || '').trim();
+        if (remoteSessionToken && remoteSessionToken !== localDeviceId) {
+          return notify("AKUN SEDANG AKTIF DI PERANGKAT LAIN! Satu akun siswa hanya boleh login di 1 perangkat. Logout dari perangkat sebelumnya atau hubungi Proktor untuk Reset Login.", "error");
+        }
+
+        await setStudentActiveSession(siswa.id, localDeviceId, siswa.sekolah_id);
+
         STATE.role = 'siswa';
-        STATE.user = siswa;
+        STATE.user = { ...siswa, active_session_token: localDeviceId };
         STATE.activeSekolahId = siswa.sekolah_id;
         STATE.siswaStep = 'konfirmasi';
         attachAntiCheatListeners();
@@ -1955,8 +2052,10 @@ function quickPreviewLogin(role, proktorIndex = 0) {
   } else if (role === 'siswa') {
     enterExamFullscreen();
     const s = MOCK_DB.siswa[0];
+    const localDeviceId = getOrCreateDeviceId();
+    setStudentActiveSession(s.id, localDeviceId, s.sekolah_id);
     STATE.role = 'siswa';
-    STATE.user = s;
+    STATE.user = { ...s, active_session_token: localDeviceId };
     STATE.activeSekolahId = s.sekolah_id;
     attachAntiCheatListeners();
     loadInitialData().then(async () => {
@@ -1968,11 +2067,16 @@ function quickPreviewLogin(role, proktorIndex = 0) {
   }
 }
 
-async function handleLogout() {
+async function handleLogout(skipClearRemoteSession = false) {
   if (STATE.timerInterval) clearInterval(STATE.timerInterval);
   if (STATE.textSaveDebounceTimer) clearTimeout(STATE.textSaveDebounceTimer);
   teardownRealtime();
   exitExamFullscreen();
+  if (!skipClearRemoteSession && STATE.role === 'siswa' && STATE.user?.id) {
+    try {
+      await setStudentActiveSession(STATE.user.id, null, STATE.user.sekolah_id);
+    } catch (_) {}
+  }
   if (!IS_PREVIEW && STATE.role === 'admin' && sb) {
     await sb.auth.signOut();
   }
@@ -4339,8 +4443,15 @@ async function proktorResetLogin(jadwalId) {
     try {
       const target = STATE.jadwalList.find(j => String(j.id) === String(jadwalId));
       if (!target) return notify("Data jadwal peserta tidak ditemukan.", "error");
+
+      // Lepaskan kunci sesi perangkat siswa agar bisa login kembali di perangkat baru
+      if (target.siswa_id) {
+        await setStudentActiveSession(target.siswa_id, null, target.sekolah_id || null);
+      }
+
       if (target.status_ujian === 'Selesai') {
-        return notify("Peserta sudah menyelesaikan ujian.", "info");
+        render();
+        return notify("Sesi perangkat peserta telah direset. Status ujian sudah Selesai.", "success");
       }
 
       const nextStatus = target.status_ujian === 'Terkunci'
@@ -4364,7 +4475,7 @@ async function proktorResetLogin(jadwalId) {
       }
 
       render();
-      notify("Reset login berhasil: kunci & pelanggaran peserta telah direset.", "success");
+      notify("Reset login berhasil: kunci perangkat & pelanggaran peserta telah direset.", "success");
     } catch (err) {
       notify("Gagal reset login peserta: " + err.message, "error");
     }
@@ -4390,6 +4501,9 @@ function proktorBulkResetLockedLogins(fixedRuangId = null) {
       await runWithBusyLock('bulk-reset-login', async () => {
         try {
           for (const row of lockedRows) {
+            if (row.siswa_id) {
+              await setStudentActiveSession(row.siswa_id, null, row.sekolah_id || null);
+            }
             await dbUpdate('jadwal_peserta', row.id, {
               status_ujian: 'Sedang Mengerjakan',
               pelanggaran: 0
@@ -4427,6 +4541,9 @@ function proktorResetSesi(jadwalId, siswaId, mapelId) {
     async () => {
       await runWithBusyLock(`reset-sesi-${jadwalId}`, async () => {
         try {
+          if (siswaId) {
+            await setStudentActiveSession(siswaId, null, target?.sekolah_id || null);
+          }
           await dbUpdate('jadwal_peserta', jadwalId, {
             status_ujian: 'Belum Mulai',
             pelanggaran: 0
@@ -7317,8 +7434,13 @@ CREATE TABLE IF NOT EXISTS public.siswa (
     foto_url TEXT DEFAULT '',
     ruang_id UUID REFERENCES public.ruang_ujian(id) ON DELETE SET NULL,
     sesi_id UUID REFERENCES public.sesi_ujian(id) ON DELETE SET NULL,
+    active_session_token TEXT DEFAULT NULL,
+    last_login_at TIMESTAMPTZ DEFAULT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+ALTER TABLE public.siswa ADD COLUMN IF NOT EXISTS active_session_token TEXT DEFAULT NULL;
+ALTER TABLE public.siswa ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ DEFAULT NULL;
 
 -- 7. JADWAL & STATUS PESERTA
 CREATE TABLE IF NOT EXISTS public.jadwal_peserta (
