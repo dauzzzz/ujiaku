@@ -4782,12 +4782,15 @@ function printRekapF4() {
 function renderHeaderPusdatin(subtitle, rightHtml = '') {
   const s = getSekolahById(STATE.activeSekolahId);
   const brand = getAppBranding();
-  const displayLogo = s.logo_url || brand.logo_url || DEFAULT_SHIELD_SVG;
-  const displayBadge = s.app_badge || brand.app_badge || 'PUSDATIN • ANBK';
-  const displaySubtitle = subtitle || s.app_subtitle || brand.app_subtitle || 'Sistem Asesmen Berbasis Komputer';
-  const schoolTitle = (STATE.role === 'admin' && STATE.activeSekolahId === 'ALL')
-    ? 'PORTAL KOORDINATOR MULTI-SEKOLAH (SEMUA NPSN)'
-    : (STATE.sekolahList.length > 0 ? `${s.nama_sekolah} (NPSN: ${s.npsn})` : 'PORTAL ASESMEN BERBASIS KOMPUTER');
+  const isLoggedIn = Boolean(STATE.role && STATE.user);
+  const displayLogo = isLoggedIn ? (s.logo_url || brand.logo_url || DEFAULT_SHIELD_SVG) : DEFAULT_SHIELD_SVG;
+  const displayBadge = isLoggedIn ? (s.app_badge || brand.app_badge || 'PUSDATIN • ANBK') : 'UJIAKU • CBT';
+  const displaySubtitle = subtitle || (isLoggedIn ? (s.app_subtitle || brand.app_subtitle || 'Sistem Asesmen Berbasis Komputer') : 'Sistem Asesmen Berbasis Komputer Multi-Sekolah');
+  const schoolTitle = !isLoggedIn
+    ? 'UJIAKU — PORTAL ASESMEN BERBASIS KOMPUTER'
+    : ((STATE.role === 'admin' && STATE.activeSekolahId === 'ALL')
+      ? 'PORTAL KOORDINATOR MULTI-SEKOLAH (SEMUA NPSN)'
+      : (STATE.sekolahList.length > 0 ? `${s.nama_sekolah} (NPSN: ${s.npsn})` : 'PORTAL ASESMEN BERBASIS KOMPUTER'));
 
   return `
     <header class="no-print pusdatin-header text-white shadow-md sticky top-0 z-40 h-16 flex items-center">
@@ -4815,18 +4818,16 @@ function renderHeaderPusdatin(subtitle, rightHtml = '') {
 }
 
 function renderLoginScreen() {
-  const s = getSekolahById(STATE.activeSekolahId);
-  const brand = getAppBranding();
-  const initLogo = brand.logo_url || s.logo_url || DEFAULT_SHIELD_SVG;
-  const initBadge = brand.app_badge || 'PUSDATIN • ANBK';
-  const initSubtitle = brand.app_subtitle || 'Sistem Asesmen Berbasis Komputer';
+  const initLogo = DEFAULT_SHIELD_SVG;
+  const initBadge = 'UJIAKU • CBT';
+  const initSubtitle = 'Platform Ujian Online Multi-Sekolah • Standar Pusdatin';
   const tab = STATE.loginTab;
   const pwdInputType = STATE.showPassword ? 'text' : 'password';
 
   return `
     <div class="min-h-screen flex flex-col justify-between">
       ${renderHeaderPusdatin(initSubtitle, `
-        <span class="text-[11px] bg-white/15 px-2.5 py-1 rounded-full font-semibold">CBT Pusdatin • Multi-Sekolah</span>
+        <span class="text-[11px] bg-white/15 px-2.5 py-1 rounded-full font-semibold">UJIAKU • Multi-Sekolah</span>
       `)}
 
       ${IS_PREVIEW ? `
@@ -4847,10 +4848,10 @@ function renderLoginScreen() {
             <div class="w-16 h-16 rounded-2xl bg-white border border-slate-200 shadow-xs mx-auto mb-2.5 p-2 flex items-center justify-center">
               <img src="${esc(initLogo)}"
                 onerror="this.onerror=null;this.src='${DEFAULT_SHIELD_SVG}'"
-                alt="Logo Aplikasi" class="w-full h-full object-contain" />
+                alt="Logo UJIAKU CBT" class="w-full h-full object-contain" />
             </div>
             <div class="inline-block text-[10px] font-extrabold tracking-wider uppercase bg-amber-400 text-slate-950 px-2.5 py-0.5 rounded mb-1">${esc(initBadge)}</div>
-            <h2 class="text-lg font-extrabold text-slate-900">Selamat Datang</h2>
+            <h2 class="text-lg font-extrabold text-slate-900">Selamat Datang di UJIAKU</h2>
             <p class="text-xs text-slate-500 mt-1">Silakan login menggunakan akun ${tab === 'siswa' ? 'Peserta Ujian' : (tab === 'proktor' ? 'Proktor Sekolah' : 'Administrator')} yang telah diberikan.</p>
           </div>
 
@@ -4940,7 +4941,7 @@ function renderLoginScreen() {
       </main>
 
       <footer class="text-center py-3 text-xs text-slate-500 border-t border-slate-200 bg-white/80">
-        &copy; 2026 <strong>CBT Pusdatin Multi-Sekolah</strong> • Dikembangkan oleh <strong>alfian tech</strong>
+        &copy; 2026 <strong>UJIAKU CBT</strong> • Platform Asesmen Multi-Sekolah oleh <strong>alfian tech</strong>
       </footer>
     </div>
   `;
