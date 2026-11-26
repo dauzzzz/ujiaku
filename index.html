@@ -7552,8 +7552,15 @@ window.CBT = {
   setStudentSubAnswer,
   onStudentTextInput: onStudentTextAnswerInput,
   saveDraft: saveStudentDraftToLocal,
-  setProktorTab: (tab) => { STATE.proktorTab = tab; render(); },
+  setProktorTab: async (tab) => {
+    STATE.proktorTab = tab;
+    render();
+    if (tab === 'monitoring') {
+      await syncLiveMonitoringAndHasil({ includeHasil: false, silent: true, forceRender: true });
+    }
+  },
   refreshData: loadRoleScopedData,
+  syncLiveHasil: () => syncLiveMonitoringAndHasil({ includeHasil: true, silent: false, forceRender: true }),
   resetLogin: proktorResetLogin,
   unlockLogin: proktorResetLogin,
   bulkResetLogin: proktorBulkResetLockedLogins,
@@ -7577,6 +7584,11 @@ window.CBT = {
       STATE.editSoalId = STATE.soalList[0]?.id || null;
     }
     render();
+    if (tab === 'dashboard') {
+      await syncLiveMonitoringAndHasil({ includeHasil: false, silent: true, forceRender: true });
+    } else if (tab === 'hasil') {
+      await syncLiveMonitoringAndHasil({ includeHasil: true, silent: true, forceRender: true });
+    }
   },
   toggleMoreMenu: (val) => { STATE.mobileMoreMenuOpen = (val !== undefined) ? val : !STATE.mobileMoreMenuOpen; render(); },
   setActiveSekolah: (id) => { STATE.activeSekolahId = id; STATE.sekolah = getSekolahById(id); render(); },
@@ -7651,42 +7663,48 @@ window.CBT = {
   },
   downloadTemplateProktor,
   handleImportProktorExcel,
-  setProktorTab: async (tab) => {
-    STATE.proktorTab = tab;
+  exportProktorExcel,
+  addRuang,
+  startEditRuang: (encodedId) => {
+    STATE.editRuangId = decodeURIComponent(String(encodedId || ''));
     render();
-    if (tab === 'monitoring') {
-      await syncLiveMonitoringAndHasil({ includeHasil: false, silent: true, forceRender: true });
-    }
+    document.getElementById('form-ruang')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   },
-  refreshData: loadRoleScopedData,
-  syncLiveHasil: () => syncLiveMonitoringAndHasil({ includeHasil: true, silent: false, forceRender: true }),
-  resetLogin: proktorResetLogin,
-  unlockLogin: proktorResetLogin,
-  bulkResetLogin: proktorBulkResetLockedLogins,
-  resetSesi: proktorResetSesi,
-  setAdminTab: async (tab) => {
-    STATE.adminTab = tab;
-    STATE.mobileMoreMenuOpen = false;
-    if (tab !== 'sekolah') STATE.editSekolahId = null;
-    if (tab !== 'siswa') STATE.editSiswaId = null;
-    if (tab !== 'proktor') STATE.editProktorId = null;
-    if (tab !== 'ruang_sesi') {
-      STATE.editRuangId = null;
-      STATE.editSesiId = null;
-    }
-    if (tab === 'bank_soal' && (!STATE.selectedMapelId || STATE.selectedMapelId === 'Semua') && STATE.mapelList.length > 0) {
-      STATE.selectedMapelId = STATE.mapelList[0].id;
-      STATE.editSoalId = null;
-      STATE.newSoalNomor = null;
-      STATE.formStimulusId = undefined;
-      await loadBankSoalByMapel(STATE.selectedMapelId);
-      STATE.editSoalId = STATE.soalList[0]?.id || null;
-    }
+  cancelEditRuang: () => { STATE.editRuangId = null; render(); },
+  deleteRuang,
+  downloadTemplateRuang,
+  handleImportRuangExcel,
+  exportRuangExcel,
+  addSesi,
+  startEditSesi: (encodedId) => {
+    STATE.editSesiId = decodeURIComponent(String(encodedId || ''));
     render();
-    if (tab === 'dashboard') {
-      await syncLiveMonitoringAndHasil({ includeHasil: false, silent: true, forceRender: true });
-    } else if (tab === 'hasil') {
-      await syncLiveMonitoringAndHasil({ includeHasil: true, silent: true, forceRender: true });
+    document.getElementById('form-sesi')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  },
+  cancelEditSesi: () => { STATE.editSesiId = null; render(); },
+  deleteSesi,
+  downloadTemplateSesi,
+  handleImportSesiExcel,
+  exportSesiExcel,
+  openMapelModal: (encodedId = null) => {
+    STATE.editMapelId = encodedId ? decodeURIComponent(String(encodedId)) : null;
+    STATE.mapelModalOpen = true;
+    render();
+  },
+  closeMapelModal: () => {
+    STATE.mapelModalOpen = false;
+    STATE.editMapelId = null;
+    render();
+  },
+  onMapelAllSchoolsToggle: (checked) => {
+    const boxes = document.querySelectorAll('.mapel-school-checkbox');
+    if (checked) {
+      boxes.forEach(cb => { cb.checked = false; });
+    }
+    const countEl = document.getElementById('mapel-school-count');
+    if (countEl) {
+      const n = document.querySelectorAll('.mapel-school-checkbox:checked').length;
+      countEl.textContent = (checked || n === 0) ? 'Semua Sekolah' : `${n} Sekolah Dipilih`;
     }
   },
   onMapelSchoolCheckChange: () => {
