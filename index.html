@@ -386,8 +386,9 @@ const MOCK_DB = IS_PREVIEW ? {
     { id: "s-2a", sekolah_id: "sek-2", nama_sesi: "Sesi 1 (Pagi)", waktu_mulai: "07:30:00", waktu_selesai: "09:30:00" }
   ],
   proktor: [
-    { id: "p-1", sekolah_id: "sek-1", username: "proktor_gbu", password: "123", nama_proktor: "Sella Ayu, S.Pd.", nip: "199504122022212008", ruang_id: "r-1" },
-    { id: "p-2", sekolah_id: "sek-2", username: "proktor_skm", password: "123", nama_proktor: "Rudi Hartono, S.Pd.", nip: "199001012020121004", ruang_id: "r-2" }
+    { id: "p-1", sekolah_id: "sek-1", username: "proktor_gbu", password: "123", nama_proktor: "Sella Ayu, S.Pd.", role: "proktor", nip: "199504122022212008", ruang_id: "r-1" },
+    { id: "p-2", sekolah_id: "sek-2", username: "proktor_skm", password: "123", nama_proktor: "Rudi Hartono, S.Pd.", role: "proktor", nip: "199001012020121004", ruang_id: "r-2" },
+    { id: "p-3", sekolah_id: "sek-1", username: "penelaah_soal", password: "123", nama_proktor: "Tim Penelaah Soal, S.Pd.", role: "penelaah", nip: "-", ruang_id: null }
   ],
   mapel: [
     {
@@ -607,6 +608,14 @@ function esc(str) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+function normalizeProktorRole(val) {
+  const v = String(val || '').trim().toLowerCase();
+  if (v === 'penelaah' || v.includes('telaah') || v.includes('bank soal') || v.includes('soal')) {
+    return 'penelaah';
+  }
+  return 'proktor';
 }
 
 function getWIBNow() {
@@ -1121,13 +1130,39 @@ async function loadRoleScopedData() {
     await loadInitialData();
 
     const isProktor = STATE.role === 'proktor';
-    const lockedSchoolId = isProktor ? STATE.user.sekolah_id : null;
+    const isPenelaah = STATE.role === 'penelaah';
+    const lockedSchoolId = (isProktor || isPenelaah) ? STATE.user.sekolah_id : null;
 
-    if (isProktor) {
+    if (isProktor || isPenelaah) {
       STATE.activeSekolahId = lockedSchoolId;
       STATE.sekolah = getSekolahById(lockedSchoolId);
     } else if (STATE.activeSekolahId) {
       STATE.sekolah = getSekolahById(STATE.activeSekolahId);
+    }
+
+    if (isPenelaah) {
+      const mapel = await dbSelect('mapel', 'nama_mapel', lockedSchoolId);
+      STATE.ruang = [];
+      STATE.sesi = [];
+      STATE.mapelList = mapel;
+      STATE.proktorList = [];
+      STATE.siswaList = [];
+      STATE.jadwalList = [];
+      STATE.hasilList = [];
+
+      if ((!STATE.selectedMapelId || !mapel.some(m => String(m.id) === String(STATE.selectedMapelId))) && mapel.length > 0) {
+        STATE.selectedMapelId = mapel[0].id;
+      }
+      if (STATE.selectedMapelId && STATE.selectedMapelId !== 'Semua') {
+        await loadBankSoalByMapel(STATE.selectedMapelId);
+        if (!STATE.editSoalId && STATE.newSoalNomor === null) {
+          STATE.editSoalId = STATE.soalList[0]?.id || null;
+        }
+      } else {
+        STATE.stimulusList = [];
+        STATE.soalList = [];
+      }
+      return;
     }
 
     const [ruang, sesi, mapel, proktorList, siswaList, jadwalList, hasilList] = await Promise.all([
@@ -1851,8 +1886,9 @@ async function handleLogin(e) {
           return notify("Akun Proktor ini belum ditautkan ke NPSN / Sekolah mana pun. Hubungi Admin.", "error");
         }
 
-        STATE.role = 'proktor';
-        STATE.user = proktor;
+        const resolvedRole = normalizeProktorRole(proktor.role);
+        STATE.role = resolvedRole;
+        STATE.user = { ...proktor, role: resolvedRole };
         STATE.activeSekolahId = proktor.sekolah_id;
         await loadRoleScopedData();
         setupTargetedRealtime();
@@ -1911,8 +1947,9 @@ function quickPreviewLogin(role, proktorIndex = 0) {
     loadRoleScopedData().then(() => setupTargetedRealtime());
   } else if (role === 'proktor') {
     const p = MOCK_DB.proktor[proktorIndex] || MOCK_DB.proktor[0];
-    STATE.role = 'proktor';
-    STATE.user = p;
+    const resolvedRole = normalizeProktorRole(p.role);
+    STATE.role = resolvedRole;
+    STATE.user = { ...p, role: resolvedRole };
     STATE.activeSekolahId = p.sekolah_id;
     loadRoleScopedData().then(() => setupTargetedRealtime());
   } else if (role === 'siswa') {
@@ -2819,14 +2856,25 @@ function exportSekolahExcel() {
 
 function downloadTemplateProktor() {
   const sek = getSekolahById(STATE.activeSekolahId);
+  const defaultNpsn = sek?.npsn !== '-' ? sek.npsn : "20506432";
   const rows = [
     {
-      NPSN: sek?.npsn !== '-' ? sek.npsn : "20506432",
+      NPSN: defaultNpsn,
       USERNAME: "proktor_baru",
       PASSWORD: "123",
       NAMA_PROKTOR: "Nama Guru Proktor, S.Pd.",
+      HAK_AKSES: "proktor",
       NIP: "199001012020121001",
       KODE_RUANG: "R-01"
+    },
+    {
+      NPSN: defaultNpsn,
+      USERNAME: "penelaah_baru",
+      PASSWORD: "123",
+      NAMA_PROKTOR: "Nama Guru Penelaah Soal, S.Pd.",
+      HAK_AKSES: "penelaah",
+      NIP: "-",
+      KODE_RUANG: ""
     }
   ];
   const ws = XLSX.utils.json_to_sheet(rows);
@@ -2871,6 +2919,7 @@ function handleImportProktorExcel(e) {
 
           const username = pickCol(r, ['USERNAME', 'USER', 'ID_PROKTOR']).replace(/\.0$/, '');
           const nama_proktor = pickCol(r, ['NAMA_PROKTOR', 'NAMA_GURU', 'NAMA_LENGKAP', 'NAMA']);
+          const role = normalizeProktorRole(pickCol(r, ['HAK_AKSES', 'ROLE', 'AKSES', 'PERAN'], 'proktor'));
 
           if (username && nama_proktor && sid) {
             dedupMap.set(username, {
@@ -2878,8 +2927,9 @@ function handleImportProktorExcel(e) {
               username,
               password: pickCol(r, ['PASSWORD', 'PASS'], '123').replace(/\.0$/, ''),
               nama_proktor,
+              role,
               nip: pickCol(r, ['NIP'], '-').replace(/\.0$/, ''),
-              ruang_id: ruang ? ruang.id : null
+              ruang_id: role === 'penelaah' ? null : (ruang ? ruang.id : null)
             });
           }
         });
@@ -2907,7 +2957,12 @@ function handleImportProktorExcel(e) {
         await loadRoleScopedData();
         notify(`Berhasil mengimpor ${payloads.length} akun Guru / Proktor (${toInsert.length} baru, ${updatedCount} diperbarui)!`, "success");
       } catch (err) {
-        notify("Gagal impor Excel proktor: " + err.message, "error");
+        const msg = String(err?.message || '');
+        if (msg.includes('role') || msg.includes('schema cache')) {
+          notify("Kolom 'role' belum ada di tabel proktor Supabase. Jalankan perintah ALTER TABLE di menu SQL & Panduan Deploy.", "error");
+        } else {
+          notify("Gagal impor Excel proktor: " + msg, "error");
+        }
       }
     });
   };
@@ -2925,6 +2980,7 @@ function exportProktorExcel() {
       USERNAME: p.username,
       PASSWORD: p.password,
       NAMA_PROKTOR: p.nama_proktor,
+      HAK_AKSES: normalizeProktorRole(p.role),
       NIP: p.nip || '-',
       KODE_RUANG: r ? r.kode_ruang : '-'
     };
@@ -3643,30 +3699,67 @@ async function addProktor(e) {
       const sid = fd.get('sekolah_id');
       if (!sid) return notify("Wajib memilih Sekolah / NPSN untuk Proktor!", "error");
 
+      const role = normalizeProktorRole(fd.get('role'));
       const payload = {
         sekolah_id: sid,
         username: fd.get('username').trim(),
         password: fd.get('password').trim(),
-        nama_proktor: fd.get('nama_proktor').trim()
+        nama_proktor: fd.get('nama_proktor').trim(),
+        role
+      };
+
+      const saveWithFallback = async (isEdit) => {
+        try {
+          if (isEdit) {
+            await dbUpdate('proktor', STATE.editProktorId, payload);
+          } else {
+            await dbInsert('proktor', {
+              ...payload,
+              nip: fd.get('nip')?.trim() || '-',
+              ruang_id: role === 'penelaah' ? null : (fd.get('ruang_id') || null)
+            });
+          }
+        } catch (dbErr) {
+          const msg = String(dbErr?.message || '');
+          if (msg.includes('role') || msg.includes('schema cache')) {
+            if (role === 'penelaah') {
+              throw new Error("Kolom 'role' belum tersedia di tabel proktor Supabase. Jalankan perintah ALTER TABLE di menu SQL & Panduan Deploy terlebih dahulu.");
+            }
+            const fallbackPayload = { ...payload };
+            delete fallbackPayload.role;
+            if (isEdit) {
+              await dbUpdate('proktor', STATE.editProktorId, fallbackPayload);
+            } else {
+              await dbInsert('proktor', {
+                ...fallbackPayload,
+                nip: fd.get('nip')?.trim() || '-',
+                ruang_id: fd.get('ruang_id') || null
+              });
+            }
+          } else {
+            throw dbErr;
+          }
+        }
       };
 
       if (STATE.editProktorId) {
-        await dbUpdate('proktor', STATE.editProktorId, payload);
+        await saveWithFallback(true);
         STATE.editProktorId = null;
         await loadRoleScopedData();
-        notify(`Data Proktor "${payload.nama_proktor}" berhasil diperbarui.`, "success");
+        notify(`Data ${role === 'penelaah' ? 'Penelaah Bank Soal' : 'Proktor'} "${payload.nama_proktor}" berhasil diperbarui.`, "success");
       } else {
-        await dbInsert('proktor', {
-          ...payload,
-          nip: fd.get('nip')?.trim() || '-',
-          ruang_id: fd.get('ruang_id') || null
-        });
+        await saveWithFallback(false);
         e.target.reset();
         await loadRoleScopedData();
-        notify("Akun Proktor berhasil ditambahkan & dikunci ke sekolah terpilih.", "success");
+        notify(
+          role === 'penelaah'
+            ? "Akun Guru / Penelaah Bank Soal berhasil ditambahkan (akses khusus Bank Soal)."
+            : "Akun Proktor berhasil ditambahkan & dikunci ke sekolah terpilih.",
+          "success"
+        );
       }
     } catch (err) {
-      notify("Gagal menyimpan data Proktor: " + err.message, "error");
+      notify("Gagal menyimpan data Guru / Proktor: " + err.message, "error");
     }
   }, btn);
 }
@@ -4712,6 +4805,164 @@ function printKartuF4() {
   triggerHtmlPrint(docHtml);
 }
 
+function getFilteredCardStudents() {
+  const scoped = getScopedSiswaList();
+  const byKelas = STATE.selectedKelasFilter === 'Semua'
+    ? scoped
+    : scoped.filter(x => x.kelas === STATE.selectedKelasFilter);
+
+  if (STATE.cardPrintMode === 'single') {
+    if (!STATE.cardSingleSiswaId && byKelas.length > 0) {
+      STATE.cardSingleSiswaId = byKelas[0].id;
+    }
+    const single = byKelas.find(x => String(x.id) === String(STATE.cardSingleSiswaId));
+    return single ? [single] : (byKelas[0] ? [byKelas[0]] : []);
+  }
+  return byKelas;
+}
+
+function renderSingleOfficialCardHtml(siswa) {
+  const sek = getSekolahById(siswa.sekolah_id);
+  const ruang = STATE.ruang.find(r => String(r.id) === String(siswa.ruang_id));
+  const sesi = STATE.sesi.find(s => String(s.id) === String(siswa.sesi_id));
+
+  const ruangLabel = ruang
+    ? `${ruang.kode_ruang}${ruang.nama_ruang ? ` (${ruang.nama_ruang})` : ''}`
+    : '';
+  const sesiShort = sesi
+    ? (String(sesi.nama_sesi || '').replace(/\s*\([^)]*\)\s*/g, '').trim() || sesi.nama_sesi)
+    : '';
+  const ruangSesiText = [ruangLabel, sesiShort].filter(Boolean).join(' • ') || '-';
+
+  // Gabungkan seluruh mapel yang sesuai sekolah & kelas siswa + jadwal_peserta agar lengkap pada setiap kartu
+  const mapelById = new Map();
+  (STATE.jadwalList || [])
+    .filter(j => String(j.siswa_id) === String(siswa.id))
+    .forEach(j => {
+      const m = STATE.mapelList.find(x => String(x.id) === String(j.mapel_id));
+      if (m) mapelById.set(String(m.id), m);
+    });
+
+  (STATE.mapelList || []).forEach(m => {
+    const key = String(m.id);
+    if (mapelById.has(key)) return;
+    if (!isMapelForSchool(m, siswa.sekolah_id)) return;
+    if (!isMapelForStudentClass(m, siswa.kelas)) return;
+    mapelById.set(key, m);
+  });
+
+  const mapelListForCard = Array.from(mapelById.values()).sort((a, b) => {
+    const tA = String(a.tanggal_mulai || '9999-99-99');
+    const tB = String(b.tanggal_mulai || '9999-99-99');
+    if (tA !== tB) return tA.localeCompare(tB);
+    const jA = String(a.jam_mulai || '99:99');
+    const jB = String(b.jam_mulai || '99:99');
+    if (jA !== jB) return jA.localeCompare(jB);
+    return String(a.nama_mapel || '').localeCompare(String(b.nama_mapel || ''));
+  });
+
+  const fallbackMulai = sesi ? String(sesi.waktu_mulai || '07:30').slice(0, 5) : '07:30';
+  const fallbackSelesai = sesi ? String(sesi.waktu_selesai || '09:30').slice(0, 5) : '09:30';
+
+  const scheduleRowsHtml = mapelListForCard.length === 0
+    ? `<tr><td colspan="3" style="text-align:center;color:#64748B;">Belum ada mata pelajaran terjadwal.</td></tr>`
+    : mapelListForCard.map(m => {
+        const jamM = String(m.jam_mulai || fallbackMulai).slice(0, 5);
+        const jamS = String(m.jam_selesai || fallbackSelesai).slice(0, 5);
+        return `
+          <tr>
+            <td style="white-space:nowrap;">${esc(formatTanggalSlash(m.tanggal_mulai || sek.tanggal_ujian))}</td>
+            <td style="white-space:nowrap;">${esc(jamM)} - ${esc(jamS)} WIB</td>
+            <td style="font-weight:700;">${esc(m.nama_mapel)}</td>
+          </tr>
+        `;
+      }).join('');
+
+  const logoSrc = sek.logo_url || getAppBranding().logo_url || DEFAULT_SHIELD_SVG;
+  const signDateText = formatTanggalIndo(sek.tanggal_ujian || getWIBNow().toISOString().slice(0, 10));
+  const tahunNow = Number(String(sek.tanggal_ujian || getWIBNow().toISOString().slice(0, 10)).slice(0, 4)) || 2026;
+  const qrPayload = encodeURIComponent(`CBT|${sek.npsn}|${siswa.username}|${siswa.nama_lengkap}`);
+
+  return `
+    <div class="cbt-official-card kartu-item">
+      <div class="cbt-card-header">
+        <div class="cbt-card-logo">
+          <img src="${esc(logoSrc)}" onerror="this.onerror=null;this.src='${DEFAULT_SHIELD_SVG}'" alt="Logo Sekolah" />
+        </div>
+        <div class="cbt-card-title-wrap">
+          <div class="cbt-card-school">${esc(sek.nama_sekolah)}</div>
+          <div class="cbt-card-subtitle">KARTU PESERTA UJIAN SEKOLAH / SUMATIF AKHIR SEMESTER (SAS)</div>
+          <div class="cbt-card-mode">PELAKSANAAN ASESMEN BERBASIS KOMPUTER (CBT)</div>
+          <div class="cbt-card-year">Tahun Pelajaran ${tahunNow}/${tahunNow + 1} • NPSN: ${esc(sek.npsn)}</div>
+        </div>
+      </div>
+
+      <table class="cbt-card-bio">
+        <tr>
+          <td class="bio-label">Nama Peserta</td>
+          <td class="bio-colon">:</td>
+          <td class="bio-value" style="text-transform:uppercase;">${esc(siswa.nama_lengkap)}</td>
+        </tr>
+        <tr>
+          <td class="bio-label">NISN / NIS</td>
+          <td class="bio-colon">:</td>
+          <td class="bio-value">${esc(siswa.username)}</td>
+        </tr>
+        <tr>
+          <td class="bio-label">Kelas</td>
+          <td class="bio-colon">:</td>
+          <td class="bio-value">Kelas ${esc(siswa.kelas)}</td>
+        </tr>
+        <tr>
+          <td class="bio-label">Ruang &amp; Sesi</td>
+          <td class="bio-colon">:</td>
+          <td class="bio-room">${esc(ruangSesiText)}</td>
+        </tr>
+      </table>
+
+      <div class="cbt-card-cred">
+        <span>Username: <strong style="font-family:monospace;">${esc(siswa.username)}</strong></span>
+        <span>PIN: <strong style="font-family:monospace;color:#1D4ED8;">${esc(siswa.password)}</strong></span>
+      </div>
+
+      <table class="cbt-card-table">
+        <thead>
+          <tr>
+            <th style="width:24%;">Tanggal</th>
+            <th style="width:30%;">Waktu (WIB)</th>
+            <th>Mata Pelajaran</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${scheduleRowsHtml}
+        </tbody>
+      </table>
+
+      <div class="cbt-card-footer">
+        <div style="display:flex;align-items:flex-end;gap:8px;">
+          <div class="cbt-foto-box">
+            ${siswa.foto_url
+              ? `<img src="${esc(siswa.foto_url)}" onerror="this.parentElement.innerHTML='Foto<br/>2&times;3'" alt="Foto" />`
+              : `Foto<br/>2&times;3`}
+          </div>
+          ${STATE.cardShowQR ? `
+            <div style="width:58px;height:58px;border:1px solid #CBD5E1;border-radius:6px;padding:2px;background:#FFF;">
+              <img src="https://api.qrserver.com/v1/create-qr-code/?size=70x70&data=${qrPayload}"
+                onerror="this.style.display='none'" alt="QR" style="width:100%;height:100%;object-fit:contain;" />
+            </div>
+          ` : ''}
+        </div>
+        <div class="cbt-sign-box">
+          <div>${esc(signDateText)}</div>
+          <div>Kepala Sekolah / Ketua Panitia,</div>
+          <div class="cbt-sign-line"></div>
+          <div style="font-size:9px;color:#475569;">NIP. ....................................</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 function downloadKartuF4Html() {
   const list = getFilteredCardStudents();
   if (!list.length) return notify("Tidak ada kartu peserta untuk diunduh.", "error");
@@ -4911,7 +5162,7 @@ function renderLoginScreen() {
                 </div>
               </div>
               <p class="text-[11px] text-slate-600 bg-blue-50/70 p-3 rounded-xl border border-blue-200">
-                Akun Proktor otomatis dikunci hanya untuk memantau, mencetak kartu, dan melakukan reset login/sesi siswa sesuai <strong>NPSN Sekolah</strong> masing-masing.
+                Akun <strong>Proktor Ujian</strong> otomatis dikunci sesuai <strong>NPSN Sekolah</strong>, sedangkan akun <strong>Guru / Penelaah Bank Soal</strong> diarahkan khusus ke ruang kerja <strong>Bank Soal (6 Tipe)</strong>.
               </p>
             ` : `
               <div>
@@ -5438,6 +5689,37 @@ function renderProktorPortal() {
   `;
 }
 
+function renderPenelaahPortal() {
+  const p = STATE.user;
+  const sek = getSekolahById(p.sekolah_id);
+
+  return `
+    <div class="min-h-screen flex flex-col pb-8">
+      ${renderHeaderPusdatin('Panel Guru / Penelaah Bank Soal', `
+        <span class="px-2.5 py-1 rounded-lg bg-purple-500/30 border border-purple-200/50 text-xs font-bold hidden md:inline">
+          📝 Akses Khusus: Bank Soal
+        </span>
+        <span class="text-xs font-semibold hidden sm:inline">${esc(p.nama_proktor)}</span>
+        <button onclick="CBT.logout()" class="px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-xs font-bold shadow">Logout</button>
+      `)}
+
+      <main class="flex-1 p-3 sm:p-6">
+        <div class="max-w-6xl mx-auto space-y-4">
+          <div class="glass-panel rounded-2xl px-5 py-3.5 shadow-xs flex flex-wrap items-center justify-between gap-2 border-purple-200 bg-purple-50/50">
+            <div class="text-xs text-purple-950">
+              <strong class="font-extrabold">Ruang Kerja Penelaah Bank Soal</strong> — Anda masuk sebagai <strong>${esc(p.nama_proktor)}</strong> (${esc(sek.nama_sekolah)}). Akun ini memiliki izin khusus untuk membuka, menambah, mengedit, dan menelaah butir soal pada <strong>Bank Soal (6 Tipe)</strong>.
+            </div>
+            <button type="button" onclick="CBT.refreshData()" class="px-3 py-1.5 rounded-xl bg-white hover:bg-purple-100 border border-purple-200 text-purple-900 text-xs font-bold shrink-0">
+              ↻ Muat Ulang Soal
+            </button>
+          </div>
+          ${renderBankSoalSection(true)}
+        </div>
+      </main>
+    </div>
+  `;
+}
+
 function renderMonitoringSection(fixedRuangId = null) {
   const scopedJadwal = getScopedJadwalList();
   const rows = scopedJadwal.filter(j => {
@@ -5949,13 +6231,14 @@ function renderAdminContent() {
       ? STATE.proktorList.find(p => String(p.id) === String(STATE.editProktorId))
       : null;
     const selectedSchoolProktor = editingProktor ? editingProktor.sekolah_id : STATE.activeSekolahId;
+    const selectedRoleProktor = editingProktor ? normalizeProktorRole(editingProktor.role) : 'proktor';
 
     return `
       <div class="glass-panel rounded-2xl p-5 shadow-sm space-y-4">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h2 class="text-base font-extrabold text-slate-900">Data Guru / Proktor (Terisolasi per Sekolah)</h2>
-            <p class="text-xs text-slate-500">Setiap akun Proktor dikunci otomatis hanya untuk memantau, mencetak kartu, dan reset login/sesi siswa pada sekolahnya.</p>
+            <h2 class="text-base font-extrabold text-slate-900">Data Guru / Proktor &amp; Penelaah Bank Soal</h2>
+            <p class="text-xs text-slate-500">Pilih hak akses <strong>Proktor Ujian</strong> (monitoring, cetak kartu &amp; reset siswa sekolahnya) atau <strong>Penelaah Bank Soal</strong> (hanya membuka, mengedit &amp; menelaah Bank Soal).</p>
           </div>
           <div class="flex flex-wrap gap-2">
             <button onclick="CBT.downloadTemplateProktor()" class="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-bold">⬇ Template Excel</button>
@@ -5969,34 +6252,44 @@ function renderAdminContent() {
         <form id="form-proktor" onsubmit="CBT.addProktor(event)" class="${editingProktor ? 'bg-blue-50/70 border-blue-400 ring-2 ring-blue-100' : 'bg-slate-50 border-slate-200'} p-3.5 rounded-2xl border space-y-2.5 transition">
           ${editingProktor ? `
             <div class="flex items-center justify-between text-xs">
-              <span class="font-extrabold text-blue-900">✏️ Mode Edit Proktor: ${esc(editingProktor.nama_proktor)} (${esc(editingProktor.username)})</span>
+              <span class="font-extrabold text-blue-900">✏️ Mode Edit Akun: ${esc(editingProktor.nama_proktor)} (${esc(editingProktor.username)})</span>
               <button type="button" onclick="CBT.cancelEditProktor()" class="px-2.5 py-1 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold">Batal Edit</button>
             </div>
           ` : ''}
-          <div class="grid grid-cols-1 sm:grid-cols-5 gap-2.5">
+          <div class="grid grid-cols-1 sm:grid-cols-6 gap-2.5">
             <select name="sekolah_id" required class="px-3 py-2 rounded-xl border text-xs bg-white font-bold">
               ${STATE.sekolahList.map(sk => `<option value="${sk.id}" ${sk.id===selectedSchoolProktor?'selected':''}>${esc(sk.nama_sekolah)} (${esc(sk.npsn)})</option>`).join('')}
             </select>
-            <input name="username" required value="${esc(editingProktor?.username || '')}" placeholder="Username Proktor" class="px-3 py-2 rounded-xl border text-xs bg-white" />
+            <select name="role" required class="px-3 py-2 rounded-xl border text-xs bg-white font-bold">
+              <option value="proktor" ${selectedRoleProktor==='proktor'?'selected':''}>🛡️ Proktor Ujian</option>
+              <option value="penelaah" ${selectedRoleProktor==='penelaah'?'selected':''}>📝 Penelaah Bank Soal</option>
+            </select>
+            <input name="username" required value="${esc(editingProktor?.username || '')}" placeholder="Username" class="px-3 py-2 rounded-xl border text-xs bg-white" />
             <input name="password" required value="${esc(editingProktor?.password || '')}" placeholder="Password" class="px-3 py-2 rounded-xl border text-xs bg-white" />
             <input name="nama_proktor" required value="${esc(editingProktor?.nama_proktor || '')}" placeholder="Nama Guru / Proktor" class="px-3 py-2 rounded-xl border text-xs bg-white" />
             <button type="submit" class="px-4 py-2 rounded-xl ${editingProktor ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-700 hover:bg-blue-800'} text-white font-bold text-xs">
-              ${editingProktor ? 'Simpan Perubahan' : '+ Tambah Proktor'}
+              ${editingProktor ? 'Simpan Perubahan' : '+ Tambah Akun'}
             </button>
           </div>
         </form>
         <div class="overflow-x-auto">
           <table class="w-full text-left text-xs">
-            <thead class="bg-slate-50 border-b"><tr><th class="p-3">Sekolah (NPSN)</th><th class="p-3">Username</th><th class="p-3">Nama Proktor</th><th class="p-3">Aksi</th></tr></thead>
+            <thead class="bg-slate-50 border-b"><tr><th class="p-3">Sekolah (NPSN)</th><th class="p-3">Hak Akses</th><th class="p-3">Username</th><th class="p-3">Nama Guru / Proktor</th><th class="p-3">Aksi</th></tr></thead>
             <tbody class="divide-y">
               ${STATE.proktorList.length === 0 ? `
-                <tr><td colspan="4" class="p-6 text-center text-slate-400">Belum ada data Guru / Proktor terdaftar.</td></tr>
+                <tr><td colspan="5" class="p-6 text-center text-slate-400">Belum ada data Guru / Proktor terdaftar.</td></tr>
               ` : STATE.proktorList.map(p => {
                 const sek = getSekolahById(p.sekolah_id);
                 const safeId = encodeURIComponent(String(p.id ?? ''));
                 const isEditingRow = editingProktor && String(editingProktor.id) === String(p.id);
+                const isPenelaahRow = normalizeProktorRole(p.role) === 'penelaah';
                 return `<tr class="${isEditingRow ? 'bg-blue-50/70' : ''}">
                   <td class="p-3 font-bold text-blue-800">${esc(sek.nama_sekolah)} (${esc(sek.npsn)})</td>
+                  <td class="p-3 whitespace-nowrap">
+                    ${isPenelaahRow
+                      ? `<span class="px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800 font-bold text-[10px]">📝 Penelaah Bank Soal</span>`
+                      : `<span class="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px]">🛡️ Proktor Ujian</span>`}
+                  </td>
                   <td class="p-3 font-mono font-bold">${esc(p.username)}</td>
                   <td class="p-3">${esc(p.nama_proktor)}</td>
                   <td class="p-3 space-x-1 whitespace-nowrap">
@@ -6275,329 +6568,7 @@ function renderAdminContent() {
   }
 
   if (t === 'bank_soal') {
-    if ((!STATE.selectedMapelId || STATE.selectedMapelId === 'Semua') && STATE.mapelList.length > 0) {
-      STATE.selectedMapelId = STATE.mapelList[0].id;
-    }
-    const nextNewNomor = STATE.soalList.reduce((max, q) => Math.max(max, Number(q.nomor_urut) || 0), 0) + 1;
-    if (!STATE.editSoalId && STATE.newSoalNomor === null && STATE.soalList.length > 0) {
-      STATE.editSoalId = STATE.soalList[0].id;
-    }
-    const editingSoal = STATE.editSoalId ? STATE.soalList.find(q => q.id === STATE.editSoalId) : null;
-    const activeJenis = editingSoal ? (editingSoal.jenis_soal || 'PG').toUpperCase() : 'PG';
-    const isPgOrPgk = activeJenis === 'PG' || activeJenis === 'PGK';
-    const activeNomor = editingSoal
-      ? editingSoal.nomor_urut
-      : (STATE.newSoalNomor !== null ? STATE.newSoalNomor : nextNewNomor);
-
-    const currentFormStimId = STATE.formStimulusId !== undefined
-      ? STATE.formStimulusId
-      : (editingSoal?.stimulus_id || '');
-    const activeStimObj = (currentFormStimId && currentFormStimId !== '__NEW__')
-      ? STATE.stimulusList.find(st => st.id === currentFormStimId)
-      : null;
-    const hasSelectedMapel = Boolean(STATE.selectedMapelId && STATE.mapelList.some(m => String(m.id) === String(STATE.selectedMapelId)));
-    const safeSelectedMapelId = encodeURIComponent(String(STATE.selectedMapelId || ''));
-
-    return `
-      <div class="glass-panel rounded-2xl p-5 shadow-sm space-y-4">
-        <div class="flex flex-wrap items-center justify-between gap-2">
-          <div class="flex flex-wrap items-center gap-2">
-            <label class="text-xs font-extrabold">Paket Ujian:</label>
-            <select onchange="CBT.selectMapelBankSoal(this.value)" class="px-3 py-2 rounded-lg border text-xs font-bold bg-white max-w-full">
-              ${STATE.mapelList.length === 0
-                ? `<option value="">-- Belum Ada Paket Ujian --</option>`
-                : STATE.mapelList.map(m => `<option value="${m.id}" ${m.id===STATE.selectedMapelId?'selected':''}>${esc(m.kode_mapel)} - ${esc(m.nama_mapel)}</option>`).join('')}
-            </select>
-            <button type="button" onclick="CBT.openMapelModal()"
-              title="Buat paket ujian baru langsung dari menu Bank Soal"
-              class="px-3 py-2 rounded-lg bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold shadow-xs cursor-pointer transition">
-              + Tambah Paket
-            </button>
-            ${hasSelectedMapel ? `
-              <button type="button" onclick="CBT.clearSoalPaket('${safeSelectedMapelId}')"
-                ${STATE.soalList.length === 0 && STATE.stimulusList.length === 0 ? 'disabled' : ''}
-                class="px-2.5 py-2 rounded-lg border text-xs font-bold transition ${STATE.soalList.length === 0 && STATE.stimulusList.length === 0
-                  ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
-                  : 'bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-300 cursor-pointer'}">
-                🗑 Kosongkan Soal (${STATE.soalList.length})
-              </button>
-              <button type="button" onclick="CBT.deletePaketSoal('${safeSelectedMapelId}')"
-                class="px-2.5 py-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 border border-red-300 text-xs font-bold cursor-pointer transition">
-                ✕ Hapus Paket
-              </button>
-            ` : ''}
-          </div>
-          <div class="flex flex-wrap gap-2">
-            <button onclick="CBT.downloadTemplateSoal()" class="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-xs font-bold">⬇ Template 6 Tipe</button>
-            <label class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold cursor-pointer">
-              ⬆ Import Soal Excel
-              <input type="file" accept=".xlsx,.xls,.csv" onchange="CBT.handleImportSoalExcel(event)" class="hidden" />
-            </label>
-            <button onclick="CBT.exportSoalExcel()" class="px-3 py-1.5 rounded-lg bg-blue-700 text-white text-xs font-bold">⬇ Export Soal</button>
-          </div>
-        </div>
-
-        <div class="bg-white border border-slate-200 rounded-xl p-3 space-y-2">
-          <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
-            <span class="font-extrabold text-slate-700">Pilih Nomor Soal:</span>
-            <span class="text-[11px] text-slate-500">Total: <strong>${STATE.soalList.length}</strong> butir soal</span>
-          </div>
-          <div class="flex flex-wrap gap-1.5">
-            ${STATE.soalList.map(q => {
-              const isSelected = editingSoal && editingSoal.id === q.id;
-              return `
-                <button type="button" onclick="CBT.onNomorUrutChange(${q.nomor_urut})"
-                  class="px-2.5 py-1.5 rounded-lg border text-xs font-extrabold transition ${isSelected
-                    ? 'bg-blue-700 text-white border-blue-700 shadow-sm'
-                    : 'bg-slate-50 hover:bg-blue-50 text-slate-700 border-slate-300'}">
-                  No. ${q.nomor_urut} <span class="text-[10px] opacity-80">(${esc(q.jenis_soal)})</span>
-                </button>
-              `;
-            }).join('')}
-            <button type="button" onclick="CBT.cancelEditSoal()"
-              class="px-3 py-1.5 rounded-lg border text-xs font-extrabold transition ${!editingSoal
-                ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
-                : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300'}">
-              + Soal Baru (No. ${nextNewNomor})
-            </button>
-          </div>
-        </div>
-
-        <form id="form-bank-soal" onsubmit="CBT.saveSoal(event)" class="${editingSoal ? 'bg-blue-50/60 border-blue-400 ring-2 ring-blue-200' : 'bg-emerald-50/40 border-emerald-400 ring-2 ring-emerald-100'} border rounded-xl p-4 space-y-3 text-xs transition">
-          <div class="flex flex-wrap items-center justify-between gap-2">
-            <h3 class="font-extrabold ${editingSoal ? 'text-blue-900' : 'text-emerald-900'}">
-              ${editingSoal ? `✏️ Menampilkan &amp; Edit Soal Nomor ${editingSoal.nomor_urut} (${esc(editingSoal.jenis_soal)})` : `➕ Mode Tambah Soal Baru Nomor ${activeNomor} (Mendukung 6 Tipe)`}
-            </h3>
-            ${editingSoal ? `
-              <button type="button" onclick="CBT.cancelEditSoal()" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold shadow-xs">
-                + Buat Soal Baru (No. ${nextNewNomor})
-              </button>
-            ` : `
-              <span class="px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-900 font-bold">Form Kosong Siap Diisi</span>
-            `}
-          </div>
-
-          <div class="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
-            <div>
-              <label class="block text-[11px] font-bold text-slate-600 mb-1">Nomor Soal:</label>
-              <input name="nomor_urut" type="number" min="1" value="${activeNomor}" onchange="CBT.onNomorUrutChange(this.value)" required placeholder="No. Urut" class="w-full px-3 py-2 rounded-lg border bg-white font-extrabold text-blue-800" />
-            </div>
-            <div>
-              <label class="block text-[11px] font-bold text-slate-600 mb-1">Tipe Soal (6 Format):</label>
-              <select name="jenis_soal" onchange="CBT.onFormJenisSoalChange(this.value)" class="w-full px-3 py-2 rounded-lg border bg-white font-bold">
-                <option value="PG" ${activeJenis==='PG'?'selected':''}>1. Pilihan Ganda (PG)</option>
-                <option value="PGK" ${activeJenis==='PGK'?'selected':''}>2. Pilihan Ganda Kompleks (PGK)</option>
-                <option value="BS" ${activeJenis==='BS'?'selected':''}>3. Benar / Salah (BS)</option>
-                <option value="MJ" ${activeJenis==='MJ'?'selected':''}>4. Menjodohkan (MJ)</option>
-                <option value="ISIAN" ${activeJenis==='ISIAN'?'selected':''}>5. Isian Singkat (ISIAN)</option>
-                <option value="URAIAN" ${activeJenis==='URAIAN'?'selected':''}>6. Uraian / Esai (URAIAN)</option>
-              </select>
-            </div>
-            <div>
-              <label class="block text-[11px] font-bold text-slate-600 mb-1">Tautan Stimulus / Wacana:</label>
-              <select name="stimulus_id" onchange="CBT.onFormStimulusChange(this.value)" class="w-full px-3 py-2 rounded-lg border bg-white font-semibold">
-                <option value="" ${!currentFormStimId?'selected':''}>-- Tanpa Stimulus --</option>
-                <option value="__NEW__" ${currentFormStimId==='__NEW__'?'selected':''}>+ Buat Stimulus Baru</option>
-                ${STATE.stimulusList.map(st => `<option value="${st.id}" ${currentFormStimId===st.id?'selected':''}>Stimulus #${st.urutan}: ${esc(st.judul)}</option>`).join('')}
-              </select>
-            </div>
-            <div>
-              <label class="block text-[11px] font-bold text-slate-600 mb-1">Bobot Soal:</label>
-              <input name="bobot" type="number" step="0.5" value="${editingSoal ? editingSoal.bobot : 2}" required placeholder="Bobot Soal" class="w-full px-3 py-2 rounded-lg border bg-white font-bold" />
-            </div>
-          </div>
-
-          <div class="bg-amber-50/90 border border-amber-200 rounded-xl p-3 space-y-2">
-            <div class="flex flex-wrap items-center justify-between gap-2">
-              <span class="font-extrabold text-amber-950">📄 Panel Stimulus / Wacana &amp; URL Gambar</span>
-              <span id="stimulus-status-label" class="text-[11px] text-amber-800">${activeStimObj ? `Terhubung: Stimulus #${activeStimObj.urutan}` : (currentFormStimId === '__NEW__' ? 'Membuat Stimulus Baru' : 'Opsional (kosongkan jika soal tanpa stimulus)')}</span>
-            </div>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <input name="stimulus_judul" value="${esc(activeStimObj?.judul || '')}" placeholder="Judul Stimulus / Wacana (Opsional)" class="px-3 py-2 rounded-lg border border-amber-300 bg-white font-semibold" />
-              <input name="stimulus_gambar_url" value="${esc(activeStimObj?.gambar_url || '')}" oninput="CBT.onStimulusUrlInput(this.value)" placeholder="URL Gambar Stimulus (https://...)" class="px-3 py-2 rounded-lg border border-amber-300 bg-white" />
-            </div>
-            <div class="space-y-1">
-              <div class="flex flex-wrap items-center justify-between gap-2">
-                <label class="font-bold text-amber-950 text-[11px]">Isi Wacana / Bacaan Stimulus (WYSIWYG &amp; Rumus KaTeX):</label>
-                <button type="button" onclick="CBT.insertKatexFraction('stimulus')"
-                  class="px-2.5 py-1 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-950 border border-amber-300 font-bold text-[11px]">
-                  ½ Sisipkan Pecahan (KaTeX)
-                </button>
-              </div>
-              <div id="quill-toolbar-stimulus">
-                <span class="ql-formats">
-                  <button class="ql-bold" title="Tebal (Bold)"></button>
-                  <button class="ql-italic" title="Miring (Italic)"></button>
-                  <button class="ql-underline" title="Garis Bawah (Underline)"></button>
-                </span>
-                <span class="ql-formats">
-                  <button class="ql-align" value="" title="Rata Kiri"></button>
-                  <button class="ql-align" value="center" title="Rata Tengah"></button>
-                  <button class="ql-align" value="right" title="Rata Kanan"></button>
-                  <button class="ql-align" value="justify" title="Rata Kanan-Kiri"></button>
-                </span>
-                <span class="ql-formats">
-                  <button class="ql-list" value="ordered" title="Daftar Bernomor"></button>
-                  <button class="ql-list" value="bullet" title="Daftar Poin"></button>
-                  <button class="ql-formula" title="Sisipkan Rumus Matematika (KaTeX)"></button>
-                  <button class="ql-clean" title="Hapus Format"></button>
-                </span>
-              </div>
-              <div id="quill-stimulus-editor"></div>
-              <textarea name="stimulus_isi_wacana" id="hidden-stimulus-html" class="hidden">${esc(activeStimObj?.isi_wacana || '')}</textarea>
-            </div>
-            <div id="stimulus-preview-wrap" class="${activeStimObj?.gambar_url ? 'flex' : 'hidden'} items-center gap-3 bg-white p-2 rounded-lg border border-amber-200">
-              <img src="${esc(activeStimObj?.gambar_url || '')}" alt="Preview Stimulus" onerror="this.style.display='none'" class="h-14 w-20 object-contain rounded border" />
-              <span class="text-[11px] text-slate-600 truncate">URL Aktif: ${esc(activeStimObj?.gambar_url || '')}</span>
-            </div>
-          </div>
-
-          <div class="space-y-1.5">
-            <div class="flex flex-wrap items-center justify-between gap-2">
-              <label class="font-bold text-slate-700">Teks Pertanyaan Soal:</label>
-              <button type="button" onclick="CBT.insertKatexFraction()"
-                class="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-300 font-bold text-[11px]">
-                ½ Sisipkan Pecahan (KaTeX)
-              </button>
-            </div>
-            <div id="quill-toolbar-pertanyaan">
-              <span class="ql-formats">
-                <button class="ql-bold" title="Tebal (Bold)"></button>
-                <button class="ql-italic" title="Miring (Italic)"></button>
-                <button class="ql-underline" title="Garis Bawah (Underline)"></button>
-              </span>
-              <span class="ql-formats">
-                <button class="ql-align" value="" title="Rata Kiri"></button>
-                <button class="ql-align" value="center" title="Rata Tengah"></button>
-                <button class="ql-align" value="right" title="Rata Kanan"></button>
-                <button class="ql-align" value="justify" title="Rata Kanan-Kiri"></button>
-              </span>
-              <span class="ql-formats">
-                <button class="ql-list" value="ordered" title="Daftar Bernomor"></button>
-                <button class="ql-list" value="bullet" title="Daftar Poin"></button>
-                <button class="ql-formula" title="Sisipkan Rumus Matematika (KaTeX)"></button>
-                <button class="ql-clean" title="Hapus Format"></button>
-              </span>
-            </div>
-            <div id="quill-pertanyaan-editor"></div>
-            <textarea name="pertanyaan" id="hidden-pertanyaan-html" class="hidden">${esc(editingSoal ? editingSoal.pertanyaan : '')}</textarea>
-          </div>
-
-          <div id="box-PG-PGK" class="soal-type-box ${isPgOrPgk ? '' : 'hidden'} grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <input name="opsi_a" value="${esc(isPgOrPgk ? (editingSoal?.opsi_jawaban?.A || '') : '')}" placeholder="Opsi A" class="px-3 py-1.5 rounded-lg border bg-white" />
-            <input name="opsi_b" value="${esc(isPgOrPgk ? (editingSoal?.opsi_jawaban?.B || '') : '')}" placeholder="Opsi B" class="px-3 py-1.5 rounded-lg border bg-white" />
-            <input name="opsi_c" value="${esc(isPgOrPgk ? (editingSoal?.opsi_jawaban?.C || '') : '')}" placeholder="Opsi C" class="px-3 py-1.5 rounded-lg border bg-white" />
-            <input name="opsi_d" value="${esc(isPgOrPgk ? (editingSoal?.opsi_jawaban?.D || '') : '')}" placeholder="Opsi D" class="px-3 py-1.5 rounded-lg border bg-white" />
-            <input name="opsi_e" value="${esc(isPgOrPgk ? (editingSoal?.opsi_jawaban?.E || '') : '')}" placeholder="Opsi E (Opsional)" class="px-3 py-1.5 rounded-lg border bg-white" />
-            <span id="hint-pg-pgk" class="text-[11px] text-blue-700 self-center">${activeJenis === 'PGK' ? 'Kunci PGK: dipisah koma (misal: A,C)' : 'Kunci PG: 1 huruf (misal: A)'}</span>
-          </div>
-
-          <div id="box-BS" class="soal-type-box ${activeJenis==='BS' ? '' : 'hidden'}">
-            <textarea name="bs_pernyataan" rows="3" placeholder="Tulis 1 pernyataan per baris. Kunci: B,S atau B" class="w-full p-2 rounded-lg border bg-white">${esc(activeJenis==='BS' ? ((editingSoal?.opsi_jawaban?.pernyataan || []).join('\n')) : '')}</textarea>
-          </div>
-
-          <div id="box-MJ" class="soal-type-box ${activeJenis==='MJ' ? '' : 'hidden'} grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <textarea name="mj_premis" rows="3" placeholder="Daftar Premis Kiri (1 per baris)" class="p-2 rounded-lg border bg-white">${esc(activeJenis==='MJ' ? ((editingSoal?.opsi_jawaban?.premis || []).join('\n')) : '')}</textarea>
-            <textarea name="mj_target" rows="3" placeholder="Daftar Pasangan Kanan (1 per baris). Kunci format indeks: 0:0,1:1" class="p-2 rounded-lg border bg-white">${esc(activeJenis==='MJ' ? ((editingSoal?.opsi_jawaban?.target || []).join('\n')) : '')}</textarea>
-          </div>
-
-          <div id="box-ISIAN" class="soal-type-box ${activeJenis==='ISIAN' ? '' : 'hidden'} text-[11px] text-slate-600">
-            Pisahkan variasi kunci dengan tanda <code>|</code> (contoh: <code>Soekarno|Ir. Soekarno</code> atau pecahan <code>3/4</code>).
-          </div>
-
-          <div id="box-URAIAN" class="soal-type-box ${activeJenis==='URAIAN' ? '' : 'hidden'}">
-            <textarea name="pedoman_uraian" rows="2" placeholder="Pedoman penskoran uraian untuk acuan koreksi guru..." class="w-full p-2 rounded-lg border bg-white">${esc(activeJenis==='URAIAN' ? (editingSoal?.opsi_jawaban?.pedoman || '') : '')}</textarea>
-          </div>
-
-          <div class="flex flex-wrap gap-2 items-center">
-            <input name="kunci_jawaban" value="${esc(editingSoal ? editingSoal.kunci_jawaban : '')}" required placeholder="Kunci Jawaban (PG: A | PGK: A,C | BS: B,S | MJ: 0:0,1:1 | ISIAN: Kunci1|Kunci2)" class="px-3 py-2 rounded-lg border bg-white flex-1 font-bold" />
-            <button type="submit" class="px-5 py-2 rounded-lg ${editingSoal ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-700 hover:bg-blue-800'} text-white font-bold shadow">
-              ${editingSoal ? 'Simpan Perubahan Soal' : 'Simpan Soal Baru'}
-            </button>
-          </div>
-        </form>
-
-        <div class="mt-4">
-          ${(() => {
-            if (!editingSoal) {
-              return `
-                <div class="p-4 rounded-xl border border-dashed border-slate-300 bg-slate-50/80 text-center text-xs text-slate-500">
-                  Mode input <strong>Soal Nomor ${activeNomor}</strong> belum tersimpan. Isi form di atas lalu klik <strong>Simpan Soal Baru</strong>.
-                </div>
-              `;
-            }
-            const q = editingSoal;
-            const stim = q.stimulus_id ? STATE.stimulusList.find(st => st.id === q.stimulus_id) : null;
-            const jns = (q.jenis_soal || 'PG').toUpperCase();
-            let detailOpsiHtml = '';
-
-            if (jns === 'PG' || jns === 'PGK') {
-              const keys = Object.keys(q.opsi_jawaban || {}).filter(k => q.opsi_jawaban[k]);
-              const kunciList = String(q.kunci_jawaban || '').split(',').map(x => x.trim().toUpperCase());
-              detailOpsiHtml = `
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 mt-2">
-                  ${keys.map(k => {
-                    const isTrue = kunciList.includes(k.toUpperCase());
-                    return `<div class="px-2.5 py-1 rounded border text-[11px] flex items-start gap-1 ${isTrue ? 'bg-emerald-50 border-emerald-300 text-emerald-900 font-bold' : 'bg-slate-50 border-slate-200 text-slate-700'}">
-                      <strong>${esc(k)}.</strong> <span class="flex-1">${renderRichText(q.opsi_jawaban[k])}</span> ${isTrue ? '<span>✓</span>' : ''}
-                    </div>`;
-                  }).join('')}
-                </div>`;
-            } else if (jns === 'BS') {
-              const list = (q.opsi_jawaban?.pernyataan && q.opsi_jawaban.pernyataan.length > 0)
-                ? q.opsi_jawaban.pernyataan
-                : ["Pernyataan tunggal sesuai soal di atas"];
-              const kunciList = String(q.kunci_jawaban || '').split(',').map(x => x.trim().toUpperCase());
-              detailOpsiHtml = `
-                <div class="mt-2 space-y-1">
-                  ${list.map((st, idx) => `<div class="px-2.5 py-1 rounded bg-slate-50 border border-slate-200 text-[11px] flex justify-between gap-2">
-                    <span>${idx + 1}. ${renderRichText(st)}</span>
-                    <strong class="text-blue-700 shrink-0">${kunciList[idx] === 'B' ? 'Benar' : (kunciList[idx] === 'S' ? 'Salah' : esc(kunciList[idx] || '-'))}</strong>
-                  </div>`).join('')}
-                </div>`;
-            } else if (jns === 'MJ') {
-              const premis = q.opsi_jawaban?.premis || [];
-              const target = q.opsi_jawaban?.target || [];
-              detailOpsiHtml = `
-                <div class="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px]">
-                  <div class="p-2 rounded bg-slate-50 border border-slate-200"><strong>Premis:</strong> ${premis.map((p, i) => `${i}:${esc(p)}`).join(' | ')}</div>
-                  <div class="p-2 rounded bg-slate-50 border border-slate-200"><strong>Pasangan:</strong> ${target.map((tg, i) => `${i}:${esc(tg)}`).join(' | ')}</div>
-                </div>`;
-            } else if (jns === 'URAIAN' && q.opsi_jawaban?.pedoman) {
-              detailOpsiHtml = `<div class="mt-2 px-2.5 py-1.5 rounded bg-amber-50 border border-amber-200 text-[11px] text-amber-950"><strong>Pedoman Penskoran:</strong> ${esc(q.opsi_jawaban.pedoman)}</div>`;
-            }
-
-            return `
-              <div class="p-4 rounded-xl border border-blue-500 ring-1 ring-blue-300 bg-white space-y-2 text-xs shadow-xs">
-                <div class="flex flex-wrap items-start justify-between gap-2">
-                  <div class="flex flex-wrap items-center gap-2">
-                    <span class="px-2.5 py-0.5 rounded bg-blue-700 text-white font-bold">Pratinjau Soal No. ${q.nomor_urut}</span>
-                    <span class="px-2 py-0.5 rounded bg-slate-100 font-bold">${q.jenis_soal}</span>
-                    <span class="text-slate-500">Bobot: <strong>${q.bobot}</strong></span>
-                    <span class="text-emerald-700 font-bold">Kunci: ${esc(q.kunci_jawaban)}</span>
-                  </div>
-                  <button type="button" onclick="CBT.deleteSoal('${q.id}')" class="px-2.5 py-1 rounded bg-red-50 hover:bg-red-100 text-red-700 font-bold shrink-0">Hapus Soal Ini</button>
-                </div>
-
-                ${stim ? `
-                  <div class="p-3 rounded-lg bg-[#FFFDF7] border border-amber-300 space-y-1.5">
-                    <div class="flex flex-wrap items-center justify-between gap-1 text-[11px]">
-                      <strong class="text-amber-950">📄 Stimulus #${stim.urutan}: ${esc(stim.judul)}</strong>
-                      ${stim.gambar_url ? `<span class="text-blue-700 truncate max-w-xs">URL: ${esc(stim.gambar_url)}</span>` : ''}
-                    </div>
-                    ${stim.gambar_url ? `<img src="${esc(stim.gambar_url)}" onerror="this.style.display='none'" alt="Gambar Stimulus" class="max-h-36 rounded border border-amber-200 bg-white p-1" />` : ''}
-                    ${stim.isi_wacana ? `<div class="text-slate-700 text-[11px] leading-relaxed">${renderRichText(stim.isi_wacana)}</div>` : ''}
-                  </div>
-                ` : ''}
-
-                <div class="text-slate-900 font-semibold">${renderRichText(q.pertanyaan)}</div>
-                ${detailOpsiHtml}
-              </div>
-            `;
-          })()}
-        </div>
-      </div>
-    `;
+    return renderBankSoalSection(false);
   }
 
   if (t === 'jadwal') {
@@ -6864,158 +6835,329 @@ function renderAdminContent() {
   return renderCetakKartuSection();
 }
 
-/* ============================================================================
-   RENDER KARTU PESERTA RESMI (SESUAI REFERENSI SAS / CBT + CETAK F4)
-   ============================================================================ */
-function getFilteredCardStudents() {
-  const scopedSiswa = getScopedSiswaList();
-  const byKelas = STATE.selectedKelasFilter === 'Semua'
-    ? scopedSiswa
-    : scopedSiswa.filter(x => x.kelas === STATE.selectedKelasFilter);
-
-  if (STATE.cardPrintMode === 'single' && STATE.cardSingleSiswaId) {
-    return byKelas.filter(x => x.id === STATE.cardSingleSiswaId);
+function renderBankSoalSection(isPenelaah = false) {
+  if ((!STATE.selectedMapelId || STATE.selectedMapelId === 'Semua') && STATE.mapelList.length > 0) {
+    STATE.selectedMapelId = STATE.mapelList[0].id;
   }
-  return byKelas;
-}
-
-function renderSingleOfficialCardHtml(siswa) {
-  const sek = getSekolahById(siswa.sekolah_id);
-  const brand = getAppBranding();
-  const cardLogo = sek.logo_url || brand.logo_url || DEFAULT_SHIELD_SVG;
-  const studentJadwalRows = STATE.jadwalList.filter(j => String(j.siswa_id) === String(siswa.id));
-  const resolvedRuangId = siswa.ruang_id || studentJadwalRows.find(j => j.ruang_id)?.ruang_id || null;
-  const resolvedSesiId = siswa.sesi_id || studentJadwalRows.find(j => j.sesi_id)?.sesi_id || null;
-
-  const r = STATE.ruang.find(x => String(x.id) === String(resolvedRuangId));
-  let se = STATE.sesi.find(x => String(x.id) === String(resolvedSesiId));
-  if (!se) {
-    const schoolSesiList = STATE.sesi.filter(x => String(x.sekolah_id) === String(siswa.sekolah_id));
-    if (schoolSesiList.length > 0) se = schoolSesiList[0];
+  const nextNewNomor = STATE.soalList.reduce((max, q) => Math.max(max, Number(q.nomor_urut) || 0), 0) + 1;
+  if (!STATE.editSoalId && STATE.newSoalNomor === null && STATE.soalList.length > 0) {
+    STATE.editSoalId = STATE.soalList[0].id;
   }
-  const ruangLabel = r
-    ? `${r.kode_ruang} (${r.nama_ruang})`
-    : '-';
-  const sesiNama = se ? String(se.nama_sesi || '').trim() : '';
-  const ruangSesiDisplay = sesiNama ? `${ruangLabel} • ${sesiNama}` : ruangLabel;
-  const defaultMulai = se ? String(se.waktu_mulai || '07:30').slice(0, 5) : '07:30';
-  const defaultSelesai = se ? String(se.waktu_selesai || '09:30').slice(0, 5) : '09:30';
+  const editingSoal = STATE.editSoalId ? STATE.soalList.find(q => q.id === STATE.editSoalId) : null;
+  const activeJenis = editingSoal ? (editingSoal.jenis_soal || 'PG').toUpperCase() : 'PG';
+  const isPgOrPgk = activeJenis === 'PG' || activeJenis === 'PGK';
+  const activeNomor = editingSoal
+    ? editingSoal.nomor_urut
+    : (STATE.newSoalNomor !== null ? STATE.newSoalNomor : nextNewNomor);
 
-  // Gabungkan semua mapel yang sudah didistribusikan ke siswa + seluruh mapel yang sesuai sekolah & kelas siswa
-  const mapelMap = new Map();
-  studentJadwalRows.forEach(j => {
-    const m = STATE.mapelList.find(x => String(x.id) === String(j.mapel_id));
-    if (m) mapelMap.set(String(m.id), m);
-  });
-  STATE.mapelList.forEach(m => {
-    if (mapelMap.has(String(m.id))) return;
-    if (!isMapelForSchool(m, siswa.sekolah_id)) return;
-    if (!isMapelForStudentClass(m, siswa.kelas)) return;
-    mapelMap.set(String(m.id), m);
-  });
-
-  const jadwalRows = Array.from(mapelMap.values()).sort((a, b) => {
-    const dateA = String(a.tanggal_mulai || '');
-    const dateB = String(b.tanggal_mulai || '');
-    if (dateA !== dateB) return dateA.localeCompare(dateB);
-    return String(a.jam_mulai || '00:00').localeCompare(String(b.jam_mulai || '00:00'));
-  });
-
-  const sortedExamDates = jadwalRows.map(m => m.tanggal_mulai).filter(Boolean).sort();
-  const examDateFromManajemen = sortedExamDates[0] || getWIBNow().toISOString().slice(0, 10);
-
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=90x90&data=${encodeURIComponent(siswa.username)}`;
-  const tglCetak = formatTanggalIndo(examDateFromManajemen);
+  const currentFormStimId = STATE.formStimulusId !== undefined
+    ? STATE.formStimulusId
+    : (editingSoal?.stimulus_id || '');
+  const activeStimObj = (currentFormStimId && currentFormStimId !== '__NEW__')
+    ? STATE.stimulusList.find(st => st.id === currentFormStimId)
+    : null;
+  const hasSelectedMapel = Boolean(STATE.selectedMapelId && STATE.mapelList.some(m => String(m.id) === String(STATE.selectedMapelId)));
+  const safeSelectedMapelId = encodeURIComponent(String(STATE.selectedMapelId || ''));
 
   return `
-    <div class="cbt-official-card kartu-item">
-      <div class="cbt-card-header">
-        <div class="cbt-card-logo">
-          <img src="${esc(cardLogo)}"
-            onerror="this.onerror=null;this.src='${DEFAULT_SHIELD_SVG}'"
-            alt="Logo Sekolah" />
+    <div class="glass-panel rounded-2xl p-5 shadow-sm space-y-4">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <div class="flex flex-wrap items-center gap-2">
+          <label class="text-xs font-extrabold">Paket Ujian:</label>
+          <select onchange="CBT.selectMapelBankSoal(this.value)" class="px-3 py-2 rounded-lg border text-xs font-bold bg-white max-w-full">
+            ${STATE.mapelList.length === 0
+              ? `<option value="">-- Belum Ada Paket Ujian --</option>`
+              : STATE.mapelList.map(m => `<option value="${m.id}" ${m.id===STATE.selectedMapelId?'selected':''}>${esc(m.kode_mapel)} - ${esc(m.nama_mapel)}</option>`).join('')}
+          </select>
+          ${!isPenelaah ? `
+            <button type="button" onclick="CBT.openMapelModal()"
+              title="Buat paket ujian baru langsung dari menu Bank Soal"
+              class="px-3 py-2 rounded-lg bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold shadow-xs cursor-pointer transition">
+              + Tambah Paket
+            </button>
+            ${hasSelectedMapel ? `
+              <button type="button" onclick="CBT.clearSoalPaket('${safeSelectedMapelId}')"
+                ${STATE.soalList.length === 0 && STATE.stimulusList.length === 0 ? 'disabled' : ''}
+                class="px-2.5 py-2 rounded-lg border text-xs font-bold transition ${STATE.soalList.length === 0 && STATE.stimulusList.length === 0
+                  ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
+                  : 'bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-300 cursor-pointer'}">
+                🗑 Kosongkan Soal (${STATE.soalList.length})
+              </button>
+              <button type="button" onclick="CBT.deletePaketSoal('${safeSelectedMapelId}')"
+                class="px-2.5 py-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 border border-red-300 text-xs font-bold cursor-pointer transition">
+                ✕ Hapus Paket
+              </button>
+            ` : ''}
+          ` : ''}
         </div>
-        <div class="cbt-card-title-wrap">
-          <div class="cbt-card-school">${esc(sek.nama_sekolah)}</div>
-          <div class="cbt-card-subtitle">KARTU PESERTA UJIAN SEKOLAH / SUMATIF AKHIR SEMESTER (SAS)</div>
-          <div class="cbt-card-mode">PELAKSANAAN ASESMEN BERBASIS KOMPUTER (CBT)</div>
-          <div class="cbt-card-year">Tahun Pelajaran 2026/2027 • Semester Ganjil</div>
+        <div class="flex flex-wrap gap-2">
+          <button onclick="CBT.downloadTemplateSoal()" class="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-xs font-bold">⬇ Template 6 Tipe</button>
+          <label class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold cursor-pointer">
+            ⬆ Import Soal Excel
+            <input type="file" accept=".xlsx,.xls,.csv" onchange="CBT.handleImportSoalExcel(event)" class="hidden" />
+          </label>
+          <button onclick="CBT.exportSoalExcel()" class="px-3 py-1.5 rounded-lg bg-blue-700 text-white text-xs font-bold">⬇ Export Soal</button>
         </div>
       </div>
 
-      <table class="cbt-card-bio">
-        <tr>
-          <td class="bio-label">Nama Peserta</td>
-          <td class="bio-colon">:</td>
-          <td class="bio-value uppercase">${esc(siswa.nama_lengkap)}</td>
-        </tr>
-        <tr>
-          <td class="bio-label">NISN / NIS</td>
-          <td class="bio-colon">:</td>
-          <td class="bio-value">${esc(siswa.username)}</td>
-        </tr>
-        <tr>
-          <td class="bio-label">Kelas</td>
-          <td class="bio-colon">:</td>
-          <td class="bio-value">Kelas ${esc(siswa.kelas)}</td>
-        </tr>
-        <tr>
-          <td class="bio-label">Ruang &amp; Sesi</td>
-          <td class="bio-colon">:</td>
-          <td class="bio-room">${esc(ruangSesiDisplay)}</td>
-        </tr>
-      </table>
-
-      <div class="cbt-card-cred">
-        <span>Username: <strong style="font-family:monospace;">${esc(siswa.username)}</strong></span>
-        <span>PIN: <strong style="color:#1D4ED8;font-family:monospace;">${esc(siswa.password)}</strong></span>
-      </div>
-
-      <table class="cbt-card-table">
-        <thead>
-          <tr>
-            <th style="width:76px;">Tanggal</th>
-            <th style="width:96px;text-align:center;">Waktu (WIB)</th>
-            <th>Mata Pelajaran</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${jadwalRows.length === 0 ? `
-            <tr>
-              <td>${esc(formatTanggalSlash(examDateFromManajemen))}</td>
-              <td style="text-align:center;white-space:nowrap;">${esc(defaultMulai)} - ${esc(defaultSelesai)}</td>
-              <td><strong>Belum ada paket ujian dijadwalkan</strong></td>
-            </tr>
-          ` : jadwalRows.map(m => {
-            const jMulai = m.jam_mulai ? String(m.jam_mulai).slice(0, 5) : defaultMulai;
-            const jSelesai = m.jam_selesai ? String(m.jam_selesai).slice(0, 5) : defaultSelesai;
+      <div class="bg-white border border-slate-200 rounded-xl p-3 space-y-2">
+        <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
+          <span class="font-extrabold text-slate-700">Pilih Nomor Soal:</span>
+          <span class="text-[11px] text-slate-500">Total: <strong>${STATE.soalList.length}</strong> butir soal</span>
+        </div>
+        <div class="flex flex-wrap gap-1.5">
+          ${STATE.soalList.map(q => {
+            const isSelected = editingSoal && editingSoal.id === q.id;
             return `
-            <tr>
-              <td>${esc(formatTanggalSlash(m.tanggal_mulai || examDateFromManajemen))}</td>
-              <td style="text-align:center;white-space:nowrap;">${esc(jMulai)} - ${esc(jSelesai)}</td>
-              <td><strong>${esc(m.nama_mapel)}</strong></td>
-            </tr>
-          `;
+              <button type="button" onclick="CBT.onNomorUrutChange(${q.nomor_urut})"
+                class="px-2.5 py-1.5 rounded-lg border text-xs font-extrabold transition ${isSelected
+                  ? 'bg-blue-700 text-white border-blue-700 shadow-sm'
+                  : 'bg-slate-50 hover:bg-blue-50 text-slate-700 border-slate-300'}">
+                No. ${q.nomor_urut} <span class="text-[10px] opacity-80">(${esc(q.jenis_soal)})</span>
+              </button>
+            `;
           }).join('')}
-        </tbody>
-      </table>
+          <button type="button" onclick="CBT.cancelEditSoal()"
+            class="px-3 py-1.5 rounded-lg border text-xs font-extrabold transition ${!editingSoal
+              ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+              : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300'}">
+            + Soal Baru (No. ${nextNewNomor})
+          </button>
+        </div>
+      </div>
 
-      <div class="cbt-card-footer">
-        <div style="display:flex;align-items:flex-end;gap:8px;">
-          <div class="cbt-foto-box">
-            ${siswa.foto_url
-              ? `<img src="${esc(siswa.foto_url)}" onerror="this.style.display='none'" alt="Foto" />`
-              : `<span>Foto<br/>2x3</span>`}
+      <form id="form-bank-soal" onsubmit="CBT.saveSoal(event)" class="${editingSoal ? 'bg-blue-50/60 border-blue-400 ring-2 ring-blue-200' : 'bg-emerald-50/40 border-emerald-400 ring-2 ring-emerald-100'} border rounded-xl p-4 space-y-3 text-xs transition">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <h3 class="font-extrabold ${editingSoal ? 'text-blue-900' : 'text-emerald-900'}">
+            ${editingSoal ? `✏️ Menampilkan &amp; Edit Soal Nomor ${editingSoal.nomor_urut} (${esc(editingSoal.jenis_soal)})` : `➕ Mode Tambah Soal Baru Nomor ${activeNomor} (Mendukung 6 Tipe)`}
+          </h3>
+          ${editingSoal ? `
+            <button type="button" onclick="CBT.cancelEditSoal()" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold shadow-xs">
+              + Buat Soal Baru (No. ${nextNewNomor})
+            </button>
+          ` : `
+            <span class="px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-900 font-bold">Form Kosong Siap Diisi</span>
+          `}
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
+          <div>
+            <label class="block text-[11px] font-bold text-slate-600 mb-1">Nomor Soal:</label>
+            <input name="nomor_urut" type="number" min="1" value="${activeNomor}" onchange="CBT.onNomorUrutChange(this.value)" required placeholder="No. Urut" class="w-full px-3 py-2 rounded-lg border bg-white font-extrabold text-blue-800" />
           </div>
-          ${STATE.cardShowQR ? `<img src="${qrUrl}" alt="QR" style="width:54px;height:54px;border:1px solid #CBD5E1;border-radius:6px;padding:2px;" />` : ''}
+          <div>
+            <label class="block text-[11px] font-bold text-slate-600 mb-1">Tipe Soal (6 Format):</label>
+            <select name="jenis_soal" onchange="CBT.onFormJenisSoalChange(this.value)" class="w-full px-3 py-2 rounded-lg border bg-white font-bold">
+              <option value="PG" ${activeJenis==='PG'?'selected':''}>1. Pilihan Ganda (PG)</option>
+              <option value="PGK" ${activeJenis==='PGK'?'selected':''}>2. Pilihan Ganda Kompleks (PGK)</option>
+              <option value="BS" ${activeJenis==='BS'?'selected':''}>3. Benar / Salah (BS)</option>
+              <option value="MJ" ${activeJenis==='MJ'?'selected':''}>4. Menjodohkan (MJ)</option>
+              <option value="ISIAN" ${activeJenis==='ISIAN'?'selected':''}>5. Isian Singkat (ISIAN)</option>
+              <option value="URAIAN" ${activeJenis==='URAIAN'?'selected':''}>6. Uraian / Esai (URAIAN)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold text-slate-600 mb-1">Tautan Stimulus / Wacana:</label>
+            <select name="stimulus_id" onchange="CBT.onFormStimulusChange(this.value)" class="w-full px-3 py-2 rounded-lg border bg-white font-semibold">
+              <option value="" ${!currentFormStimId?'selected':''}>-- Tanpa Stimulus --</option>
+              <option value="__NEW__" ${currentFormStimId==='__NEW__'?'selected':''}>+ Buat Stimulus Baru</option>
+              ${STATE.stimulusList.map(st => `<option value="${st.id}" ${currentFormStimId===st.id?'selected':''}>Stimulus #${st.urutan}: ${esc(st.judul)}</option>`).join('')}
+            </select>
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold text-slate-600 mb-1">Bobot Soal:</label>
+            <input name="bobot" type="number" step="0.5" value="${editingSoal ? editingSoal.bobot : 2}" required placeholder="Bobot Soal" class="w-full px-3 py-2 rounded-lg border bg-white font-bold" />
+          </div>
         </div>
 
-        <div class="cbt-sign-box">
-          <div>${esc(tglCetak)}</div>
-          <div>Kepala Sekolah / Ketua Panitia,</div>
-          <div class="cbt-sign-line"></div>
-          <div style="font-size:9.5px;color:#475569;">NIP. ....................................</div>
+        <div class="bg-amber-50/90 border border-amber-200 rounded-xl p-3 space-y-2">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <span class="font-extrabold text-amber-950">📄 Panel Stimulus / Wacana &amp; URL Gambar</span>
+            <span id="stimulus-status-label" class="text-[11px] text-amber-800">${activeStimObj ? `Terhubung: Stimulus #${activeStimObj.urutan}` : (currentFormStimId === '__NEW__' ? 'Membuat Stimulus Baru' : 'Opsional (kosongkan jika soal tanpa stimulus)')}</span>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <input name="stimulus_judul" value="${esc(activeStimObj?.judul || '')}" placeholder="Judul Stimulus / Wacana (Opsional)" class="px-3 py-2 rounded-lg border border-amber-300 bg-white font-semibold" />
+            <input name="stimulus_gambar_url" value="${esc(activeStimObj?.gambar_url || '')}" oninput="CBT.onStimulusUrlInput(this.value)" placeholder="URL Gambar Stimulus (https://...)" class="px-3 py-2 rounded-lg border border-amber-300 bg-white" />
+          </div>
+          <div class="space-y-1">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <label class="font-bold text-amber-950 text-[11px]">Isi Wacana / Bacaan Stimulus (WYSIWYG &amp; Rumus KaTeX):</label>
+              <button type="button" onclick="CBT.insertKatexFraction('stimulus')"
+                class="px-2.5 py-1 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-950 border border-amber-300 font-bold text-[11px]">
+                ½ Sisipkan Pecahan (KaTeX)
+              </button>
+            </div>
+            <div id="quill-toolbar-stimulus">
+              <span class="ql-formats">
+                <button class="ql-bold" title="Tebal (Bold)"></button>
+                <button class="ql-italic" title="Miring (Italic)"></button>
+                <button class="ql-underline" title="Garis Bawah (Underline)"></button>
+              </span>
+              <span class="ql-formats">
+                <button class="ql-align" value="" title="Rata Kiri"></button>
+                <button class="ql-align" value="center" title="Rata Tengah"></button>
+                <button class="ql-align" value="right" title="Rata Kanan"></button>
+                <button class="ql-align" value="justify" title="Rata Kanan-Kiri"></button>
+              </span>
+              <span class="ql-formats">
+                <button class="ql-list" value="ordered" title="Daftar Bernomor"></button>
+                <button class="ql-list" value="bullet" title="Daftar Poin"></button>
+                <button class="ql-formula" title="Sisipkan Rumus Matematika (KaTeX)"></button>
+                <button class="ql-clean" title="Hapus Format"></button>
+              </span>
+            </div>
+            <div id="quill-stimulus-editor"></div>
+            <textarea name="stimulus_isi_wacana" id="hidden-stimulus-html" class="hidden">${esc(activeStimObj?.isi_wacana || '')}</textarea>
+          </div>
+          <div id="stimulus-preview-wrap" class="${activeStimObj?.gambar_url ? 'flex' : 'hidden'} items-center gap-3 bg-white p-2 rounded-lg border border-amber-200">
+            <img src="${esc(activeStimObj?.gambar_url || '')}" alt="Preview Stimulus" onerror="this.style.display='none'" class="h-14 w-20 object-contain rounded border" />
+            <span class="text-[11px] text-slate-600 truncate">URL Aktif: ${esc(activeStimObj?.gambar_url || '')}</span>
+          </div>
         </div>
+
+        <div class="space-y-1.5">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <label class="font-bold text-slate-700">Teks Pertanyaan Soal:</label>
+            <button type="button" onclick="CBT.insertKatexFraction()"
+              class="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-300 font-bold text-[11px]">
+              ½ Sisipkan Pecahan (KaTeX)
+            </button>
+          </div>
+          <div id="quill-toolbar-pertanyaan">
+            <span class="ql-formats">
+              <button class="ql-bold" title="Tebal (Bold)"></button>
+              <button class="ql-italic" title="Miring (Italic)"></button>
+              <button class="ql-underline" title="Garis Bawah (Underline)"></button>
+            </span>
+            <span class="ql-formats">
+              <button class="ql-align" value="" title="Rata Kiri"></button>
+              <button class="ql-align" value="center" title="Rata Tengah"></button>
+              <button class="ql-align" value="right" title="Rata Kanan"></button>
+              <button class="ql-align" value="justify" title="Rata Kanan-Kiri"></button>
+            </span>
+            <span class="ql-formats">
+              <button class="ql-list" value="ordered" title="Daftar Bernomor"></button>
+              <button class="ql-list" value="bullet" title="Daftar Poin"></button>
+              <button class="ql-formula" title="Sisipkan Rumus Matematika (KaTeX)"></button>
+              <button class="ql-clean" title="Hapus Format"></button>
+            </span>
+          </div>
+          <div id="quill-pertanyaan-editor"></div>
+          <textarea name="pertanyaan" id="hidden-pertanyaan-html" class="hidden">${esc(editingSoal ? editingSoal.pertanyaan : '')}</textarea>
+        </div>
+
+        <div id="box-PG-PGK" class="soal-type-box ${isPgOrPgk ? '' : 'hidden'} grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <input name="opsi_a" value="${esc(isPgOrPgk ? (editingSoal?.opsi_jawaban?.A || '') : '')}" placeholder="Opsi A" class="px-3 py-1.5 rounded-lg border bg-white" />
+          <input name="opsi_b" value="${esc(isPgOrPgk ? (editingSoal?.opsi_jawaban?.B || '') : '')}" placeholder="Opsi B" class="px-3 py-1.5 rounded-lg border bg-white" />
+          <input name="opsi_c" value="${esc(isPgOrPgk ? (editingSoal?.opsi_jawaban?.C || '') : '')}" placeholder="Opsi C" class="px-3 py-1.5 rounded-lg border bg-white" />
+          <input name="opsi_d" value="${esc(isPgOrPgk ? (editingSoal?.opsi_jawaban?.D || '') : '')}" placeholder="Opsi D" class="px-3 py-1.5 rounded-lg border bg-white" />
+          <input name="opsi_e" value="${esc(isPgOrPgk ? (editingSoal?.opsi_jawaban?.E || '') : '')}" placeholder="Opsi E (Opsional)" class="px-3 py-1.5 rounded-lg border bg-white" />
+          <span id="hint-pg-pgk" class="text-[11px] text-blue-700 self-center">${activeJenis === 'PGK' ? 'Kunci PGK: dipisah koma (misal: A,C)' : 'Kunci PG: 1 huruf (misal: A)'}</span>
+        </div>
+
+        <div id="box-BS" class="soal-type-box ${activeJenis==='BS' ? '' : 'hidden'}">
+          <textarea name="bs_pernyataan" rows="3" placeholder="Tulis 1 pernyataan per baris. Kunci: B,S atau B" class="w-full p-2 rounded-lg border bg-white">${esc(activeJenis==='BS' ? ((editingSoal?.opsi_jawaban?.pernyataan || []).join('\n')) : '')}</textarea>
+        </div>
+
+        <div id="box-MJ" class="soal-type-box ${activeJenis==='MJ' ? '' : 'hidden'} grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <textarea name="mj_premis" rows="3" placeholder="Daftar Premis Kiri (1 per baris)" class="p-2 rounded-lg border bg-white">${esc(activeJenis==='MJ' ? ((editingSoal?.opsi_jawaban?.premis || []).join('\n')) : '')}</textarea>
+          <textarea name="mj_target" rows="3" placeholder="Daftar Pasangan Kanan (1 per baris). Kunci format indeks: 0:0,1:1" class="p-2 rounded-lg border bg-white">${esc(activeJenis==='MJ' ? ((editingSoal?.opsi_jawaban?.target || []).join('\n')) : '')}</textarea>
+        </div>
+
+        <div id="box-ISIAN" class="soal-type-box ${activeJenis==='ISIAN' ? '' : 'hidden'} text-[11px] text-slate-600">
+          Pisahkan variasi kunci dengan tanda <code>|</code> (contoh: <code>Soekarno|Ir. Soekarno</code> atau pecahan <code>3/4</code>).
+        </div>
+
+        <div id="box-URAIAN" class="soal-type-box ${activeJenis==='URAIAN' ? '' : 'hidden'}">
+          <textarea name="pedoman_uraian" rows="2" placeholder="Pedoman penskoran uraian untuk acuan koreksi guru..." class="w-full p-2 rounded-lg border bg-white">${esc(activeJenis==='URAIAN' ? (editingSoal?.opsi_jawaban?.pedoman || '') : '')}</textarea>
+        </div>
+
+        <div class="flex flex-wrap gap-2 items-center">
+          <input name="kunci_jawaban" value="${esc(editingSoal ? editingSoal.kunci_jawaban : '')}" required placeholder="Kunci Jawaban (PG: A | PGK: A,C | BS: B,S | MJ: 0:0,1:1 | ISIAN: Kunci1|Kunci2)" class="px-3 py-2 rounded-lg border bg-white flex-1 font-bold" />
+          <button type="submit" class="px-5 py-2 rounded-lg ${editingSoal ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-700 hover:bg-blue-800'} text-white font-bold shadow">
+            ${editingSoal ? 'Simpan Perubahan Soal' : 'Simpan Soal Baru'}
+          </button>
+        </div>
+      </form>
+
+      <div class="mt-4">
+        ${(() => {
+          if (!editingSoal) {
+            return `
+              <div class="p-4 rounded-xl border border-dashed border-slate-300 bg-slate-50/80 text-center text-xs text-slate-500">
+                Mode input <strong>Soal Nomor ${activeNomor}</strong> belum tersimpan. Isi form di atas lalu klik <strong>Simpan Soal Baru</strong>.
+              </div>
+            `;
+          }
+          const q = editingSoal;
+          const stim = q.stimulus_id ? STATE.stimulusList.find(st => st.id === q.stimulus_id) : null;
+          const jns = (q.jenis_soal || 'PG').toUpperCase();
+          let detailOpsiHtml = '';
+
+          if (jns === 'PG' || jns === 'PGK') {
+            const keys = Object.keys(q.opsi_jawaban || {}).filter(k => q.opsi_jawaban[k]);
+            const kunciList = String(q.kunci_jawaban || '').split(',').map(x => x.trim().toUpperCase());
+            detailOpsiHtml = `
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 mt-2">
+                ${keys.map(k => {
+                  const isTrue = kunciList.includes(k.toUpperCase());
+                  return `<div class="px-2.5 py-1 rounded border text-[11px] flex items-start gap-1 ${isTrue ? 'bg-emerald-50 border-emerald-300 text-emerald-900 font-bold' : 'bg-slate-50 border-slate-200 text-slate-700'}">
+                    <strong>${esc(k)}.</strong> <span class="flex-1">${renderRichText(q.opsi_jawaban[k])}</span> ${isTrue ? '<span>✓</span>' : ''}
+                  </div>`;
+                }).join('')}
+              </div>`;
+          } else if (jns === 'BS') {
+            const list = (q.opsi_jawaban?.pernyataan && q.opsi_jawaban.pernyataan.length > 0)
+              ? q.opsi_jawaban.pernyataan
+              : ["Pernyataan tunggal sesuai soal di atas"];
+            const kunciList = String(q.kunci_jawaban || '').split(',').map(x => x.trim().toUpperCase());
+            detailOpsiHtml = `
+              <div class="mt-2 space-y-1">
+                ${list.map((st, idx) => `<div class="px-2.5 py-1 rounded bg-slate-50 border border-slate-200 text-[11px] flex justify-between gap-2">
+                  <span>${idx + 1}. ${renderRichText(st)}</span>
+                  <strong class="text-blue-700 shrink-0">${kunciList[idx] === 'B' ? 'Benar' : (kunciList[idx] === 'S' ? 'Salah' : esc(kunciList[idx] || '-'))}</strong>
+                </div>`).join('')}
+              </div>`;
+          } else if (jns === 'MJ') {
+            const premis = q.opsi_jawaban?.premis || [];
+            const target = q.opsi_jawaban?.target || [];
+            detailOpsiHtml = `
+              <div class="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px]">
+                <div class="p-2 rounded bg-slate-50 border border-slate-200"><strong>Premis:</strong> ${premis.map((p, i) => `${i}:${esc(p)}`).join(' | ')}</div>
+                <div class="p-2 rounded bg-slate-50 border border-slate-200"><strong>Pasangan:</strong> ${target.map((tg, i) => `${i}:${esc(tg)}`).join(' | ')}</div>
+              </div>`;
+          } else if (jns === 'URAIAN' && q.opsi_jawaban?.pedoman) {
+            detailOpsiHtml = `<div class="mt-2 px-2.5 py-1.5 rounded bg-amber-50 border border-amber-200 text-[11px] text-amber-950"><strong>Pedoman Penskoran:</strong> ${esc(q.opsi_jawaban.pedoman)}</div>`;
+          }
+
+          return `
+            <div class="p-4 rounded-xl border border-blue-500 ring-1 ring-blue-300 bg-white space-y-2 text-xs shadow-xs">
+              <div class="flex flex-wrap items-start justify-between gap-2">
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="px-2.5 py-0.5 rounded bg-blue-700 text-white font-bold">Pratinjau Soal No. ${q.nomor_urut}</span>
+                  <span class="px-2 py-0.5 rounded bg-slate-100 font-bold">${q.jenis_soal}</span>
+                  <span class="text-slate-500">Bobot: <strong>${q.bobot}</strong></span>
+                  <span class="text-emerald-700 font-bold">Kunci: ${esc(q.kunci_jawaban)}</span>
+                </div>
+                <button type="button" onclick="CBT.deleteSoal('${q.id}')" class="px-2.5 py-1 rounded bg-red-50 hover:bg-red-100 text-red-700 font-bold shrink-0">Hapus Soal Ini</button>
+              </div>
+
+              ${stim ? `
+                <div class="p-3 rounded-lg bg-[#FFFDF7] border border-amber-300 space-y-1.5">
+                  <div class="flex flex-wrap items-center justify-between gap-1 text-[11px]">
+                    <strong class="text-amber-950">📄 Stimulus #${stim.urutan}: ${esc(stim.judul)}</strong>
+                    ${stim.gambar_url ? `<span class="text-blue-700 truncate max-w-xs">URL: ${esc(stim.gambar_url)}</span>` : ''}
+                  </div>
+                  ${stim.gambar_url ? `<img src="${esc(stim.gambar_url)}" onerror="this.style.display='none'" alt="Gambar Stimulus" class="max-h-36 rounded border border-amber-200 bg-white p-1" />` : ''}
+                  ${stim.isi_wacana ? `<div class="text-slate-700 text-[11px] leading-relaxed">${renderRichText(stim.isi_wacana)}</div>` : ''}
+                </div>
+              ` : ''}
+
+              <div class="text-slate-900 font-semibold">${renderRichText(q.pertanyaan)}</div>
+              ${detailOpsiHtml}
+            </div>
+          `;
+        })()}
       </div>
     </div>
   `;
@@ -7128,17 +7270,20 @@ CREATE TABLE IF NOT EXISTS public.sesi_ujian (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 4. PROKTOR / PENGAWAS RUANG (Wajib terikat ke sekolah_id)
+-- 4. PROKTOR / PENGAWAS RUANG & PENELAAH BANK SOAL (Wajib terikat ke sekolah_id)
 CREATE TABLE IF NOT EXISTS public.proktor (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     sekolah_id UUID REFERENCES public.pengaturan_sekolah(id) ON DELETE CASCADE,
     username TEXT UNIQUE NOT NULL,
     password TEXT NOT NULL,
     nama_proktor TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'proktor' CHECK (role IN ('proktor', 'penelaah')),
     nip TEXT DEFAULT '-',
     ruang_id UUID REFERENCES public.ruang_ujian(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+ALTER TABLE public.proktor ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'proktor';
 
 -- 5. MAPEL / PAKET UJIAN
 CREATE TABLE IF NOT EXISTS public.mapel (
@@ -7572,6 +7717,7 @@ function render() {
   if (!STATE.role) html = renderLoginScreen();
   else if (STATE.role === 'siswa') html = renderSiswaPortal();
   else if (STATE.role === 'proktor') html = renderProktorPortal();
+  else if (STATE.role === 'penelaah') html = renderPenelaahPortal();
   else if (STATE.role === 'admin') html = renderAdminPortal();
 
   html += renderMapelModal();
@@ -7580,7 +7726,7 @@ function render() {
 
   root.innerHTML = html;
   renderToastOnly();
-  if (STATE.role === 'admin' && STATE.adminTab === 'bank_soal') {
+  if ((STATE.role === 'admin' && STATE.adminTab === 'bank_soal') || STATE.role === 'penelaah') {
     initQuillStimulusEditor();
     initQuillPertanyaanEditor();
   }
