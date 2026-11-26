@@ -504,6 +504,7 @@ const STATE = {
   timeLeftSec: 0,
   timerInterval: null,
   konfirmasiWatchInterval: null,
+  adminMapelWatchInterval: null,
   showDaftarSoal: false,
   antiCheatModal: false,
   antiCheatReason: '',
@@ -1157,6 +1158,9 @@ async function loadRoleScopedData() {
     notify("Error sinkronisasi data terisolasi: " + err.message, "error");
   } finally {
     STATE.loading = false;
+    if (STATE.role === 'admin' && STATE.adminTab === 'mapel') {
+      startAdminMapelScheduleWatcher();
+    }
     render();
   }
 }
@@ -1199,6 +1203,43 @@ function stopKonfirmasiScheduleWatcher() {
     clearInterval(STATE.konfirmasiWatchInterval);
     STATE.konfirmasiWatchInterval = null;
   }
+}
+
+function stopAdminMapelScheduleWatcher() {
+  if (STATE.adminMapelWatchInterval) {
+    clearInterval(STATE.adminMapelWatchInterval);
+    STATE.adminMapelWatchInterval = null;
+  }
+}
+
+function getAdminMapelLiveStatusKey() {
+  return (STATE.mapelList || []).map(m => {
+    const isAktif = String(m.status || '').toLowerCase() === 'aktif';
+    if (!isAktif) return `${m.id}:draft`;
+    const g = evaluateMapelAccessGuard(m);
+    if (!g.blocked) return `${m.id}:live`;
+    if (g.notStartedYet) return `${m.id}:wait`;
+    return `${m.id}:ended`;
+  }).join('|');
+}
+
+function startAdminMapelScheduleWatcher() {
+  stopAdminMapelScheduleWatcher();
+  if (STATE.role !== 'admin' || STATE.adminTab !== 'mapel') return;
+
+  let prevKey = getAdminMapelLiveStatusKey();
+  STATE.adminMapelWatchInterval = setInterval(() => {
+    if (STATE.role !== 'admin' || STATE.adminTab !== 'mapel') {
+      stopAdminMapelScheduleWatcher();
+      return;
+    }
+    if (STATE.mapelModalOpen || STATE.confirmModal || STATE.infoModal) return;
+    const nextKey = getAdminMapelLiveStatusKey();
+    if (nextKey !== prevKey) {
+      prevKey = nextKey;
+      render();
+    }
+  }, 1000);
 }
 
 function startKonfirmasiScheduleWatcher() {
@@ -1312,6 +1353,7 @@ async function refreshStudentKonfirmasiData(silent = false) {
 
 function teardownRealtime() {
   stopKonfirmasiScheduleWatcher();
+  stopAdminMapelScheduleWatcher();
   if (STATE.realtimeChannel && sb) {
     try { sb.removeChannel(STATE.realtimeChannel); } catch (_) {}
   }
@@ -6106,9 +6148,11 @@ function renderAdminContent() {
                 : (schoolIds.length === 1
                   ? `🏫 ${schoolNames[0]}`
                   : `🏫 ${schoolIds.length} Sekolah: ${schoolNames.join(', ')}`);
-              const isAktif = m.status === 'Aktif';
+              const isAktif = String(m.status || '').toLowerCase() === 'aktif';
               const mapelGuard = evaluateMapelAccessGuard(m);
               const isSedangBerlangsung = isAktif && !mapelGuard.blocked;
+              const isMenungguJadwal = isAktif && mapelGuard.blocked && mapelGuard.notStartedYet;
+              const isJadwalBerakhir = isAktif && mapelGuard.blocked && !mapelGuard.notStartedYet;
               const safeId = encodeURIComponent(String(m.id ?? ''));
               const tokenLabel = schoolIds.length === 1
                 ? getSekolahById(schoolIds[0]).token_aktif
@@ -6128,11 +6172,56 @@ function renderAdminContent() {
                           <span class="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-emerald-600 text-white shadow-xs">
                             ▶ Sedang Berlangsung
                           </span>
-                        ` : ''}
+                        ` : (isMenungguJadwal ? `
+                          <span class="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-blue-100 text-blue-800 border border-blue-200">
+                            ⏳ Menunggu Jadwal
+                          </span>
+                        ` : (isJadwalBerakhir ? `
+                          <span class="px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-slate-200 text-slate-700">
+                            ✓ Jadwal Berakhir
+                          </span>
+                        ` : ''))}
                         <span class="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[10px] font-bold" title="${esc(cakupanLabel)}">
                           ${esc(cakupanLabel)}
                         </span>
                       </div>
+                      <span class="px-2.5 py-0.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-800 font-mono text-[11px] font-extrabold">
+                        TOKEN: ${esc(tokenLabel)}
+                      </span>
+                    </div>
+
+                    <div>
+                      <h3 class="text-base font-extrabold text-slate-900 leading-snug">${esc(m.nama_mapel)}</h3>
+                      <div class="text-xs text-slate-600 mt-1 flex flex-wrap gap-x-3 gap-y-1">
+                        <span>Kode: <strong class="text-slate-800">${esc(m.kode_mapel)}</strong></span>
+                        <span>|</span>
+                        <span>Kelas: <strong class="text-slate-800">${esc(m.kelas_target)}</strong></span>
+                        <span>|</span>
+                        <span>Durasi: <strong class="text-slate-800">${m.durasi_menit} Menit</strong></span>
+                      </div>
+                      <div class="text-xs font-semibold text-blue-700 mt-1.5">
+                        📅 Jadwal: ${esc(tglDMY)} (${esc(jamMulai)} s.d ${esc(jamSelesai)} WIB)
+                      </div>
+                    </div>
+
+                    ${!isAktif ? `
+                      <div class="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900">
+                        Sesi belum aktif (ujian ditutup). Klik <strong>Aktifkan Ujian</strong> agar paket ini bisa dikerjakan siswa.
+                      </div>
+                    ` : (isSedangBerlangsung ? `
+                      <div class="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-[11px] text-emerald-900 font-semibold">
+                        ▶ <strong>Sedang Berlangsung</strong> — Paket ujian ini sedang aktif tampil di portal siswa sesuai jadwal WIB.
+                      </div>
+                    ` : (isMenungguJadwal ? `
+                      <div class="p-2.5 rounded-xl bg-blue-50 border border-blue-200 text-[11px] text-blue-900">
+                        ⏳ <strong>Menunggu Jadwal</strong> — Akan otomatis berstatus <strong>Sedang Berlangsung</strong> pada ${esc(tglDMY)} pukul ${esc(jamMulai)} WIB.
+                      </div>
+                    ` : `
+                      <div class="p-2.5 rounded-xl bg-slate-100 border border-slate-200 text-[11px] text-slate-700">
+                        ✓ <strong>Jadwal Berakhir</strong> — Batas waktu (${esc(tglDMY)} pukul ${esc(jamSelesai)} WIB) telah lewat. Edit jadwal jika ingin membuka kembali.
+                      </div>
+                    `))}
+                  </div>
                       <span class="px-2.5 py-0.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-800 font-mono text-[11px] font-extrabold">
                         TOKEN: ${esc(tokenLabel)}
                       </span>
@@ -7589,122 +7678,10 @@ window.CBT = {
     } else if (tab === 'hasil') {
       await syncLiveMonitoringAndHasil({ includeHasil: true, silent: true, forceRender: true });
     }
-  },
-  toggleMoreMenu: (val) => { STATE.mobileMoreMenuOpen = (val !== undefined) ? val : !STATE.mobileMoreMenuOpen; render(); },
-  setActiveSekolah: (id) => { STATE.activeSekolahId = id; STATE.sekolah = getSekolahById(id); render(); },
-  updateToken: updateTokenSekolah,
-  addSekolah: addSekolahBaru,
-  saveSekolah: savePengaturanSekolah,
-  startEditSekolah: (encodedId) => {
-    STATE.editSekolahId = decodeURIComponent(String(encodedId || ''));
-    render();
-    document.getElementById(`form-sekolah-${STATE.editSekolahId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  },
-  cancelEditSekolah: () => { STATE.editSekolahId = null; render(); },
-  deleteSekolah,
-  onSchoolLogoInput: (schoolId, urlVal) => {
-    const img = document.getElementById(`logo-preview-${schoolId}`);
-    if (!img) return;
-    const trimmed = String(urlVal || '').trim();
-    img.onerror = null;
-    img.src = trimmed || DEFAULT_SHIELD_SVG;
-    img.onerror = function () { this.onerror = null; this.src = DEFAULT_SHIELD_SVG; };
-  },
-  onLogoFileUpload,
-  downloadTemplateSekolah,
-  handleImportSekolahExcel,
-  exportSekolahExcel,
-  addSiswa,
-  startEditSiswa: (encodedId) => {
-    STATE.editSiswaId = decodeURIComponent(String(encodedId || ''));
-    render();
-    document.getElementById('form-siswa')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  },
-  cancelEditSiswa: () => { STATE.editSiswaId = null; render(); },
-  bulkDeleteSiswa,
-  downloadTemplateSiswa,
-  handleImportSiswaExcel,
-  exportSiswaExcel,
-  toggleAllSiswa: (checked) => { STATE.selectedSiswaIds = checked ? getScopedSiswaList().map(x => x.id) : []; render(); },
-  toggleSiswaSelect: (id, checked) => {
-    if (checked && !STATE.selectedSiswaIds.includes(id)) STATE.selectedSiswaIds.push(id);
-    else STATE.selectedSiswaIds = STATE.selectedSiswaIds.filter(i => i !== id);
-    render();
-  },
-  addProktor,
-  startEditProktor: (encodedId) => {
-    STATE.editProktorId = decodeURIComponent(String(encodedId || ''));
-    render();
-    document.getElementById('form-proktor')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  },
-  cancelEditProktor: () => { STATE.editProktorId = null; render(); },
-  deleteProktor: (encodedId) => {
-    const rawId = decodeURIComponent(String(encodedId || ''));
-    const target = STATE.proktorList.find(x => String(x.id) === rawId);
-    if (!target) return notify("Data Guru / Proktor tidak ditemukan atau sudah dihapus.", "error");
-    const label = `${target.nama_proktor} (${target.username})`;
-    askConfirm(
-      "Hapus Data Guru / Proktor",
-      `Apakah Anda yakin ingin menghapus akun proktor ${label}?`,
-      async () => {
-        await runWithBusyLock(`delete-proktor-${target.id}`, async () => {
-          try {
-            await dbDelete('proktor', target.id);
-            if (String(STATE.editProktorId) === String(target.id)) STATE.editProktorId = null;
-            STATE.proktorList = STATE.proktorList.filter(x => String(x.id) !== String(target.id));
-            await loadRoleScopedData();
-            notify(`Akun proktor ${label} berhasil dihapus.`, "success");
-          } catch (err) {
-            notify("Gagal menghapus proktor: " + err.message, "error");
-          }
-        });
-      }
-    );
-  },
-  downloadTemplateProktor,
-  handleImportProktorExcel,
-  exportProktorExcel,
-  addRuang,
-  startEditRuang: (encodedId) => {
-    STATE.editRuangId = decodeURIComponent(String(encodedId || ''));
-    render();
-    document.getElementById('form-ruang')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  },
-  cancelEditRuang: () => { STATE.editRuangId = null; render(); },
-  deleteRuang,
-  downloadTemplateRuang,
-  handleImportRuangExcel,
-  exportRuangExcel,
-  addSesi,
-  startEditSesi: (encodedId) => {
-    STATE.editSesiId = decodeURIComponent(String(encodedId || ''));
-    render();
-    document.getElementById('form-sesi')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  },
-  cancelEditSesi: () => { STATE.editSesiId = null; render(); },
-  deleteSesi,
-  downloadTemplateSesi,
-  handleImportSesiExcel,
-  exportSesiExcel,
-  openMapelModal: (encodedId = null) => {
-    STATE.editMapelId = encodedId ? decodeURIComponent(String(encodedId)) : null;
-    STATE.mapelModalOpen = true;
-    render();
-  },
-  closeMapelModal: () => {
-    STATE.mapelModalOpen = false;
-    STATE.editMapelId = null;
-    render();
-  },
-  onMapelAllSchoolsToggle: (checked) => {
-    const boxes = document.querySelectorAll('.mapel-school-checkbox');
-    if (checked) {
-      boxes.forEach(cb => { cb.checked = false; });
-    }
-    const countEl = document.getElementById('mapel-school-count');
-    if (countEl) {
-      const n = document.querySelectorAll('.mapel-school-checkbox:checked').length;
-      countEl.textContent = (checked || n === 0) ? 'Semua Sekolah' : `${n} Sekolah Dipilih`;
+    if (tab === 'mapel') {
+      startAdminMapelScheduleWatcher();
+    } else {
+      stopAdminMapelScheduleWatcher();
     }
   },
   onMapelSchoolCheckChange: () => {
