@@ -482,6 +482,7 @@ const STATE = {
   editProktorId: null,
   editRuangId: null,
   editSesiId: null,
+  editSekolahId: null,
   editDistribusiGroupKey: null,
   newSoalNomor: null,
   formStimulusId: undefined,
@@ -3335,6 +3336,11 @@ async function updateTokenSekolah(e) {
 
 async function addSekolahBaru(e) {
   e.preventDefault();
+  if (STATE.editSekolahId) {
+    const targetId = STATE.editSekolahId;
+    await savePengaturanSekolah(e, targetId);
+    return;
+  }
   const btn = e.target.querySelector('button[type="submit"]');
   await runWithBusyLock('add-sekolah', async () => {
     try {
@@ -3390,6 +3396,9 @@ async function savePengaturanSekolah(e, sekolahId) {
           throw dbErr;
         }
       }
+      if (String(STATE.editSekolahId) === String(sekolahId)) {
+        STATE.editSekolahId = null;
+      }
       await loadRoleScopedData();
       const updatedInState = STATE.sekolahList.find(x => x.id === sekolahId);
       if (updatedInState) {
@@ -3431,6 +3440,9 @@ function deleteSekolah(rawId) {
             MOCK_DB.jadwal_peserta = (MOCK_DB.jadwal_peserta || []).filter(x => String(x.sekolah_id) !== String(id));
             MOCK_DB.hasil_ujian = (MOCK_DB.hasil_ujian || []).filter(x => String(x.sekolah_id) !== String(id));
             MOCK_DB.mapel = (MOCK_DB.mapel || []).filter(x => String(x.sekolah_id) !== String(id));
+          }
+          if (String(STATE.editSekolahId) === String(id)) {
+            STATE.editSekolahId = null;
           }
           STATE.sekolahList = STATE.sekolahList.filter(sk => String(sk.id) !== String(id));
           if (String(STATE.activeSekolahId) === String(id)) {
@@ -5626,194 +5638,102 @@ function renderAdminContent() {
   }
 
   if (t === 'sekolah') {
-    return `
-      <div class="space-y-4">
-        <div class="glass-panel rounded-2xl p-5 shadow-sm">
-          <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
-            <h2 class="text-base font-extrabold text-slate-900">+ Daftarkan Sekolah Baru (Isolasi NPSN)</h2>
-            <div class="flex flex-wrap gap-2">
-              <button type="button" onclick="CBT.downloadTemplateSekolah()" class="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-bold">⬇ Template Excel</button>
-              <label class="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold cursor-pointer">
-                ⬆ Import Excel (.xlsx)
-                <input type="file" accept=".xlsx,.xls,.csv" onchange="CBT.handleImportSekolahExcel(event)" class="hidden" />
-              </label>
-              <button type="button" onclick="CBT.exportSekolahExcel()" class="px-3 py-1.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold">⬇ Export Excel</button>
-            </div>
-          </div>
-          <form onsubmit="CBT.addSekolah(event)" class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 bg-slate-50 p-4 rounded-2xl border text-xs">
-            <input name="npsn" required placeholder="NPSN Sekolah (Contoh: 20506432)" class="px-3 py-2.5 rounded-xl border bg-white font-mono" />
-            <input name="nama_sekolah" required placeholder="Nama Sekolah" class="px-3 py-2.5 rounded-xl border bg-white uppercase" />
-            <input name="kecamatan" placeholder="Kecamatan / Kabupaten" class="px-3 py-2.5 rounded-xl border bg-white" />
-            <input name="token_aktif" required placeholder="Token Ujian (Mis: SAS2026)" class="px-3 py-2.5 rounded-xl border bg-white uppercase font-bold" />
-            <input name="logo_url" placeholder="URL Logo Sekolah (Opsional)" class="sm:col-span-2 px-3 py-2.5 rounded-xl border bg-white" />
-            <button type="submit" class="sm:col-span-3 py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white font-bold">+ Tambah Sekolah ke Sistem</button>
-          </form>
-        </div>
-
-        ${STATE.sekolahList.length === 0 ? `
-          <div class="glass-panel rounded-2xl p-8 text-center text-xs text-slate-500">Belum ada data sekolah terdaftar.</div>
-        ` : `
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            ${STATE.sekolahList.map(sk => {
-              const safeSekolahId = encodeURIComponent(String(sk.id ?? ''));
-              const canDelete = STATE.sekolahList.length > 1;
-              return `
-              <form id="form-sekolah-${sk.id}" onsubmit="CBT.saveSekolah(event, '${sk.id}')" class="glass-panel rounded-2xl p-4 shadow-sm space-y-2.5 text-xs">
-                <div class="flex items-center justify-between border-b pb-2">
-                  <span class="font-extrabold text-blue-800">NPSN: ${esc(sk.npsn)}</span>
-                  <span class="px-2.5 py-0.5 rounded-lg bg-amber-100 text-amber-900 font-bold">Token: ${esc(sk.token_aktif)}</span>
-                </div>
-                <div class="flex items-center gap-3 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                  <div class="w-12 h-12 rounded-xl bg-white border border-slate-300 p-1 flex items-center justify-center shrink-0">
-                    <img id="logo-preview-${sk.id}" src="${esc(sk.logo_url || DEFAULT_SHIELD_SVG)}"
-                      onerror="this.onerror=null;this.src='${DEFAULT_SHIELD_SVG}'"
-                      alt="Logo ${esc(sk.nama_sekolah)}" class="w-full h-full object-contain" />
-                  </div>
-                  <div class="flex-1 min-w-0">
-                    <div class="flex items-center justify-between gap-2 mb-1">
-                      <label class="font-bold text-slate-600 text-[11px]">Nama Sekolah</label>
-                      <label class="px-2 py-0.5 rounded bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold text-[10px] cursor-pointer">
-                        📁 File Logo
-                        <input type="file" accept="image/*" onchange="CBT.onLogoFileUpload(event, '${sk.id}')" class="hidden" />
-                      </label>
-                    </div>
-                    <input name="nama_sekolah" value="${esc(sk.nama_sekolah)}" required class="w-full px-3 py-1.5 rounded-xl border bg-white font-bold uppercase" />
-                  </div>
-                </div>
-                <div class="grid grid-cols-2 gap-2">
-                  <div>
-                    <label class="font-bold text-slate-600 text-[11px] block mb-0.5">NPSN</label>
-                    <input name="npsn" value="${esc(sk.npsn)}" required class="w-full px-3 py-1.5 rounded-xl border bg-white font-mono" />
-                  </div>
-                  <div>
-                    <label class="font-bold text-slate-600 text-[11px] block mb-0.5">Token Ujian Aktif</label>
-                    <input name="token_aktif" value="${esc(sk.token_aktif)}" required class="w-full px-3 py-1.5 rounded-xl border bg-white font-bold uppercase" />
-                  </div>
-                </div>
-                <div>
-                  <label class="font-bold text-slate-600 text-[11px] block mb-0.5">Kecamatan / Kabupaten</label>
-                  <input name="kecamatan" value="${esc(sk.kecamatan)}" class="w-full px-3 py-1.5 rounded-xl border bg-white" />
-                </div>
-                <div>
-                  <label class="font-bold text-slate-600 text-[11px] block mb-0.5">URL Logo Sekolah</label>
-                  <input name="logo_url" value="${esc(sk.logo_url)}" oninput="CBT.onSchoolLogoInput('${sk.id}', this.value)" placeholder="https://.../logo.png" class="w-full px-3 py-1.5 rounded-xl border bg-white" />
-                </div>
-                <div class="flex items-center gap-2 pt-1">
-                  <button type="submit" class="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold">Simpan Perubahan Sekolah</button>
-                  <button type="button" onclick="CBT.deleteSekolah('${safeSekolahId}')"
-                    ${!canDelete ? 'disabled title="Minimal harus tersisa 1 sekolah aktif"' : ''}
-                    class="px-4 py-2.5 rounded-xl font-bold transition ${canDelete
-                      ? 'bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 cursor-pointer'
-                      : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed'}">
-                    Hapus
-                  </button>
-                </div>
-              </form>
-            `;
-            }).join('')}
-          </div>
-        `}
-      </div>
-    `;
-  }
-
-  if (t === 'siswa') {
-    const editingSiswa = STATE.editSiswaId
-      ? STATE.siswaList.find(s => String(s.id) === String(STATE.editSiswaId))
+    const editingSekolah = STATE.editSekolahId
+      ? STATE.sekolahList.find(sk => String(sk.id) === String(STATE.editSekolahId))
       : null;
-    const selectedSchoolSiswa = editingSiswa ? editingSiswa.sekolah_id : STATE.activeSekolahId;
+    const formTargetKey = editingSekolah ? editingSekolah.id : 'new';
 
     return `
       <div class="glass-panel rounded-2xl p-5 shadow-sm space-y-4">
         <div class="flex flex-wrap items-center justify-between gap-2">
-          <h2 class="text-base font-extrabold text-slate-900">Manajemen Data Siswa (${scopedSiswa.length} Peserta)</h2>
+          <div>
+            <h2 class="text-base font-extrabold text-slate-900">Master Sekolah / Isolasi NPSN (${STATE.sekolahList.length} Sekolah)</h2>
+            <p class="text-xs text-slate-500">Tambah, edit, atau impor daftar sekolah secara ringkas dalam satu tabel.</p>
+          </div>
           <div class="flex flex-wrap gap-2">
-            <button onclick="CBT.downloadTemplateSiswa()" class="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-bold">⬇ Template Excel</button>
+            <button type="button" onclick="CBT.downloadTemplateSekolah()" class="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-bold">⬇ Template Excel</button>
             <label class="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold cursor-pointer">
               ⬆ Import Excel (.xlsx)
-              <input type="file" accept=".xlsx,.xls,.csv" onchange="CBT.handleImportSiswaExcel(event)" class="hidden" />
+              <input type="file" accept=".xlsx,.xls,.csv" onchange="CBT.handleImportSekolahExcel(event)" class="hidden" />
             </label>
-            <button onclick="CBT.exportSiswaExcel()" class="px-3 py-1.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold">⬇ Export Excel</button>
-            <button onclick="CBT.bulkDeleteSiswa()" class="px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold">Hapus (${STATE.selectedSiswaIds.length})</button>
+            <button type="button" onclick="CBT.exportSekolahExcel()" class="px-3 py-1.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold">⬇ Export Excel</button>
           </div>
         </div>
 
-        <form id="form-siswa" onsubmit="CBT.addSiswa(event)" class="${editingSiswa ? 'bg-blue-50/70 border-blue-400 ring-2 ring-blue-100' : 'bg-slate-50 border-slate-200'} p-3.5 rounded-2xl border space-y-2.5 transition">
-          ${editingSiswa ? `
-            <div class="flex items-center justify-between text-xs">
-              <span class="font-extrabold text-blue-900">✏️ Mode Edit Siswa: ${esc(editingSiswa.nama_lengkap)} (${esc(editingSiswa.username)})</span>
-              <button type="button" onclick="CBT.cancelEditSiswa()" class="px-2.5 py-1 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold">Batal Edit</button>
+        <form id="form-sekolah-${formTargetKey}" onsubmit="CBT.addSekolah(event)" class="${editingSekolah ? 'bg-blue-50/70 border-blue-400 ring-2 ring-blue-100' : 'bg-slate-50 border-slate-200'} p-3.5 rounded-2xl border space-y-2.5 text-xs transition">
+          ${editingSekolah ? `
+            <div class="flex items-center justify-between">
+              <span class="font-extrabold text-blue-900">✏️ Mode Edit Sekolah: ${esc(editingSekolah.nama_sekolah)} (NPSN: ${esc(editingSekolah.npsn)})</span>
+              <button type="button" onclick="CBT.cancelEditSekolah()" class="px-2.5 py-1 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold">Batal Edit</button>
             </div>
           ` : ''}
-          <div class="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
-            <select name="sekolah_id" required class="px-3 py-2 rounded-xl border text-xs bg-white font-bold">
-              ${STATE.sekolahList.map(sk => `<option value="${sk.id}" ${sk.id===selectedSchoolSiswa?'selected':''}>${esc(sk.nama_sekolah)} (${esc(sk.npsn)})</option>`).join('')}
-            </select>
-            <input name="username" required value="${esc(editingSiswa?.username || '')}" placeholder="NISN / Username" class="px-3 py-2 rounded-xl border text-xs bg-white" />
-            <input name="password" required value="${esc(editingSiswa ? editingSiswa.password : '123')}" placeholder="Password" class="px-3 py-2 rounded-xl border text-xs bg-white" />
-            <input name="nama_lengkap" required value="${esc(editingSiswa?.nama_lengkap || '')}" placeholder="Nama Lengkap Siswa" class="px-3 py-2 rounded-xl border text-xs bg-white" />
-            <div class="grid grid-cols-2 gap-2">
-              <input name="kelas" required value="${esc(editingSiswa ? editingSiswa.kelas : 'VI')}" placeholder="Kelas (VI)" class="px-3 py-2 rounded-xl border text-xs bg-white" />
-              <select name="jenis_kelamin" class="px-2.5 py-2 rounded-xl border text-xs bg-white">
-                <option value="Laki-Laki" ${(!editingSiswa || editingSiswa.jenis_kelamin==='Laki-Laki')?'selected':''}>Laki-Laki</option>
-                <option value="Perempuan" ${(editingSiswa && editingSiswa.jenis_kelamin==='Perempuan')?'selected':''}>Perempuan</option>
-              </select>
+          <div class="grid grid-cols-1 sm:grid-cols-6 gap-2.5 items-center">
+            <input name="npsn" required value="${esc(editingSekolah?.npsn || '')}" placeholder="NPSN Sekolah" class="px-3 py-2 rounded-xl border bg-white font-mono" />
+            <input name="nama_sekolah" required value="${esc(editingSekolah?.nama_sekolah || '')}" placeholder="Nama Sekolah" class="sm:col-span-2 px-3 py-2 rounded-xl border bg-white uppercase font-semibold" />
+            <input name="kecamatan" value="${esc(editingSekolah?.kecamatan || '')}" placeholder="Kecamatan / Kabupaten" class="sm:col-span-2 px-3 py-2 rounded-xl border bg-white" />
+            <input name="token_aktif" required value="${esc(editingSekolah?.token_aktif || '')}" placeholder="Token (SAS2026)" class="px-3 py-2 rounded-xl border bg-white uppercase font-bold" />
+            <div class="sm:col-span-4 flex items-center gap-2">
+              <div class="w-8 h-8 rounded-lg bg-white border border-slate-300 p-0.5 flex items-center justify-center shrink-0">
+                <img id="logo-preview-${formTargetKey}" src="${esc(editingSekolah?.logo_url || DEFAULT_SHIELD_SVG)}"
+                  onerror="this.onerror=null;this.src='${DEFAULT_SHIELD_SVG}'"
+                  alt="Logo" class="w-full h-full object-contain" />
+              </div>
+              <input name="logo_url" value="${esc(editingSekolah?.logo_url || '')}" oninput="CBT.onSchoolLogoInput('${formTargetKey}', this.value)" placeholder="URL Logo Sekolah (Opsional)" class="flex-1 px-3 py-2 rounded-xl border bg-white" />
+              <label class="px-2.5 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold cursor-pointer shrink-0">
+                📁 Logo
+                <input type="file" accept="image/*" onchange="CBT.onLogoFileUpload(event, '${formTargetKey}')" class="hidden" />
+              </label>
             </div>
-            <select name="ruang_id" class="px-3 py-2 rounded-xl border text-xs bg-white">
-              <option value="">-- Pilih Ruang --</option>
-              ${STATE.ruang.map(r => {
-                const sk = getSekolahById(r.sekolah_id);
-                return `<option value="${r.id}" ${editingSiswa && String(editingSiswa.ruang_id)===String(r.id)?'selected':''}>${esc(sk.nama_sekolah)} - ${esc(r.kode_ruang)}</option>`;
-              }).join('')}
-            </select>
-            <select name="sesi_id" class="px-3 py-2 rounded-xl border text-xs bg-white">
-              <option value="">-- Pilih Sesi --</option>
-              ${STATE.sesi.map(se => {
-                const sk = getSekolahById(se.sekolah_id);
-                return `<option value="${se.id}" ${editingSiswa && String(editingSiswa.sesi_id)===String(se.id)?'selected':''}>${esc(sk.nama_sekolah)} - ${esc(formatSesiDisplay(se))}</option>`;
-              }).join('')}
-            </select>
-            <button type="submit" class="px-4 py-2 rounded-xl ${editingSiswa ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-700 hover:bg-blue-800'} text-white font-bold text-xs">
-              ${editingSiswa ? 'Simpan Perubahan' : '+ Tambah Siswa'}
+            <button type="submit" class="sm:col-span-2 py-2 rounded-xl ${editingSekolah ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-700 hover:bg-blue-800'} text-white font-bold shadow-xs">
+              ${editingSekolah ? 'Simpan Perubahan Sekolah' : '+ Tambah Sekolah'}
             </button>
           </div>
         </form>
 
         <div class="overflow-x-auto">
           <table class="w-full text-left text-xs">
-            <thead class="bg-slate-50 border-b text-slate-600">
+            <thead class="bg-slate-50 border-b border-slate-200 text-slate-600">
               <tr>
-                <th class="p-2.5 w-8"><input type="checkbox" onchange="CBT.toggleAllSiswa(this.checked)" /></th>
-                <th class="p-2.5">Asal Sekolah (NPSN)</th>
-                <th class="p-2.5">NISN / User</th>
-                <th class="p-2.5">Password</th>
-                <th class="p-2.5">Nama Lengkap</th>
-                <th class="p-2.5">Kelas</th>
-                <th class="p-2.5">Ruang &amp; Sesi</th>
-                <th class="p-2.5">Aksi</th>
+                <th class="p-2.5 w-10 text-center">No</th>
+                <th class="p-2.5">NPSN</th>
+                <th class="p-2.5">Nama Sekolah</th>
+                <th class="p-2.5">Kecamatan / Kabupaten</th>
+                <th class="p-2.5">Token Aktif</th>
+                <th class="p-2.5 text-right">Aksi</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100">
-              ${scopedSiswa.length === 0 ? `
-                <tr><td colspan="8" class="p-6 text-center text-slate-400">Belum ada data siswa terdaftar pada sekolah ini.</td></tr>
-              ` : scopedSiswa.map(s => {
-                const sek = getSekolahById(s.sekolah_id);
-                const r = STATE.ruang.find(x => x.id === s.ruang_id);
-                const se = STATE.sesi.find(x => x.id === s.sesi_id);
-                const checked = STATE.selectedSiswaIds.includes(s.id);
-                const safeId = encodeURIComponent(String(s.id ?? ''));
-                const isEditingRow = editingSiswa && String(editingSiswa.id) === String(s.id);
+              ${STATE.sekolahList.length === 0 ? `
+                <tr><td colspan="6" class="p-6 text-center text-slate-400">Belum ada data sekolah terdaftar.</td></tr>
+              ` : STATE.sekolahList.map((sk, idx) => {
+                const safeSekolahId = encodeURIComponent(String(sk.id ?? ''));
+                const canDelete = STATE.sekolahList.length > 1;
+                const isEditingRow = editingSekolah && String(editingSekolah.id) === String(sk.id);
                 return `
-                  <tr class="${isEditingRow ? 'bg-blue-50/70' : ''}">
-                    <td class="p-2.5"><input type="checkbox" ${checked?'checked':''} onchange="CBT.toggleSiswaSelect('${s.id}', this.checked)" /></td>
-                    <td class="p-2.5"><span class="px-2 py-0.5 rounded bg-blue-50 text-blue-800 font-bold text-[10px]">${esc(sek.nama_sekolah)}</span></td>
-                    <td class="p-2.5 font-mono font-bold">${esc(s.username)}</td>
-                    <td class="p-2.5 font-mono">${esc(s.password)}</td>
-                    <td class="p-2.5 font-semibold">${esc(s.nama_lengkap)}</td>
-                    <td class="p-2.5">${esc(s.kelas)}</td>
-                    <td class="p-2.5">${esc(r?.kode_ruang || '-')} ${se ? `• <span class="text-emerald-700 font-semibold">${esc(formatSesiDisplay(se))}</span>` : ''}</td>
+                  <tr class="${isEditingRow ? 'bg-blue-50/70' : 'hover:bg-slate-50/80'}">
+                    <td class="p-2.5 text-center text-slate-500 font-semibold">${idx + 1}</td>
+                    <td class="p-2.5 font-mono font-bold text-blue-800 whitespace-nowrap">${esc(sk.npsn)}</td>
+                    <td class="p-2.5">
+                      <div class="flex items-center gap-2">
+                        <img src="${esc(sk.logo_url || DEFAULT_SHIELD_SVG)}"
+                          onerror="this.onerror=null;this.src='${DEFAULT_SHIELD_SVG}'"
+                          alt="Logo" class="w-6 h-6 rounded object-contain bg-white border border-slate-200 p-0.5 shrink-0" />
+                        <span class="font-bold text-slate-900 uppercase">${esc(sk.nama_sekolah)}</span>
+                      </div>
+                    </td>
+                    <td class="p-2.5 text-slate-600">${esc(sk.kecamatan || '-')}</td>
                     <td class="p-2.5 whitespace-nowrap">
-                      <button type="button" onclick="CBT.startEditSiswa('${safeId}')" class="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold cursor-pointer">Edit</button>
+                      <span class="px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 font-mono font-extrabold">${esc(sk.token_aktif)}</span>
+                    </td>
+                    <td class="p-2.5 text-right space-x-1 whitespace-nowrap">
+                      <button type="button" onclick="CBT.startEditSekolah('${safeSekolahId}')" class="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold cursor-pointer">Edit</button>
+                      <button type="button" onclick="CBT.deleteSekolah('${safeSekolahId}')"
+                        ${!canDelete ? 'disabled title="Minimal harus tersisa 1 sekolah aktif"' : ''}
+                        class="px-2.5 py-1 rounded-lg font-bold transition ${canDelete
+                          ? 'bg-red-50 hover:bg-red-100 text-red-600 cursor-pointer'
+                          : 'bg-slate-100 text-slate-400 cursor-not-allowed'}">
+                        Hapus
+                      </button>
                     </td>
                   </tr>
                 `;
@@ -7467,6 +7387,7 @@ window.CBT = {
   setAdminTab: async (tab) => {
     STATE.adminTab = tab;
     STATE.mobileMoreMenuOpen = false;
+    if (tab !== 'sekolah') STATE.editSekolahId = null;
     if (tab !== 'siswa') STATE.editSiswaId = null;
     if (tab !== 'proktor') STATE.editProktorId = null;
     if (tab !== 'ruang_sesi') {
@@ -7488,6 +7409,12 @@ window.CBT = {
   updateToken: updateTokenSekolah,
   addSekolah: addSekolahBaru,
   saveSekolah: savePengaturanSekolah,
+  startEditSekolah: (encodedId) => {
+    STATE.editSekolahId = decodeURIComponent(String(encodedId || ''));
+    render();
+    document.getElementById(`form-sekolah-${STATE.editSekolahId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  },
+  cancelEditSekolah: () => { STATE.editSekolahId = null; render(); },
   deleteSekolah,
   onSchoolLogoInput: (schoolId, urlVal) => {
     const img = document.getElementById(`logo-preview-${schoolId}`);
