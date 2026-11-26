@@ -6222,35 +6222,6 @@ function renderAdminContent() {
                       </div>
                     `))}
                   </div>
-                      <span class="px-2.5 py-0.5 rounded-lg bg-blue-50 border border-blue-200 text-blue-800 font-mono text-[11px] font-extrabold">
-                        TOKEN: ${esc(tokenLabel)}
-                      </span>
-                    </div>
-
-                    <div>
-                      <h3 class="text-base font-extrabold text-slate-900 leading-snug">${esc(m.nama_mapel)}</h3>
-                      <div class="text-xs text-slate-600 mt-1 flex flex-wrap gap-x-3 gap-y-1">
-                        <span>Kode: <strong class="text-slate-800">${esc(m.kode_mapel)}</strong></span>
-                        <span>|</span>
-                        <span>Kelas: <strong class="text-slate-800">${esc(m.kelas_target)}</strong></span>
-                        <span>|</span>
-                        <span>Durasi: <strong class="text-slate-800">${m.durasi_menit} Menit</strong></span>
-                      </div>
-                      <div class="text-xs font-semibold text-blue-700 mt-1.5">
-                        📅 Jadwal: ${esc(tglDMY)} (${esc(jamMulai)} s.d ${esc(jamSelesai)} WIB)
-                      </div>
-                    </div>
-
-                    ${!isAktif ? `
-                      <div class="p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900">
-                        Sesi belum aktif (ujian ditutup). Klik <strong>Aktifkan Ujian</strong> agar paket ini bisa dikerjakan siswa.
-                      </div>
-                    ` : (isSedangBerlangsung ? `
-                      <div class="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-[11px] text-emerald-900 font-semibold">
-                        ▶ <strong>Sedang Berlangsung</strong> — Paket ujian ini sedang aktif tampil di portal siswa sesuai jadwal WIB.
-                      </div>
-                    ` : '')}
-                  </div>
 
                   <div class="pt-3 border-t border-slate-200/80 space-y-2.5">
                     <div class="flex flex-wrap items-center gap-1.5">
@@ -7682,6 +7653,136 @@ window.CBT = {
       startAdminMapelScheduleWatcher();
     } else {
       stopAdminMapelScheduleWatcher();
+    }
+  },
+  toggleMoreMenu: (val) => { STATE.mobileMoreMenuOpen = (val !== undefined) ? val : !STATE.mobileMoreMenuOpen; render(); },
+  setActiveSekolah: (id) => { STATE.activeSekolahId = id; STATE.sekolah = getSekolahById(id); render(); },
+  updateToken: updateTokenSekolah,
+  addSekolah: addSekolahBaru,
+  saveSekolah: savePengaturanSekolah,
+  startEditSekolah: (encodedId) => {
+    STATE.editSekolahId = decodeURIComponent(String(encodedId || ''));
+    render();
+    document.getElementById(`form-sekolah-${STATE.editSekolahId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  },
+  cancelEditSekolah: () => {
+    STATE.editSekolahId = null;
+    render();
+  },
+  deleteSekolah,
+  onSchoolLogoInput: (schoolId, urlVal) => {
+    const img = document.getElementById(`logo-preview-${schoolId}`);
+    if (!img) return;
+    const trimmed = String(urlVal || '').trim();
+    img.onerror = null;
+    img.src = trimmed || DEFAULT_SHIELD_SVG;
+    img.onerror = function () { this.onerror = null; this.src = DEFAULT_SHIELD_SVG; };
+  },
+  onLogoFileUpload,
+  downloadTemplateSekolah,
+  handleImportSekolahExcel,
+  exportSekolahExcel,
+  addSiswa,
+  startEditSiswa: (encodedId) => {
+    STATE.editSiswaId = decodeURIComponent(String(encodedId || ''));
+    render();
+    document.getElementById('form-siswa')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  },
+  cancelEditSiswa: () => {
+    STATE.editSiswaId = null;
+    render();
+  },
+  bulkDeleteSiswa,
+  downloadTemplateSiswa,
+  handleImportSiswaExcel,
+  exportSiswaExcel,
+  toggleAllSiswa: (checked) => { STATE.selectedSiswaIds = checked ? getScopedSiswaList().map(x => x.id) : []; render(); },
+  toggleSiswaSelect: (id, checked) => {
+    if (checked && !STATE.selectedSiswaIds.includes(id)) STATE.selectedSiswaIds.push(id);
+    else STATE.selectedSiswaIds = STATE.selectedSiswaIds.filter(i => i !== id);
+    render();
+  },
+  addProktor,
+  startEditProktor: (encodedId) => {
+    STATE.editProktorId = decodeURIComponent(String(encodedId || ''));
+    render();
+    document.getElementById('form-proktor')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  },
+  cancelEditProktor: () => {
+    STATE.editProktorId = null;
+    render();
+  },
+  deleteProktor: (encodedId) => {
+    const rawId = decodeURIComponent(String(encodedId || ''));
+    const target = STATE.proktorList.find(x => String(x.id) === rawId);
+    if (!target) return notify("Data Guru / Proktor tidak ditemukan atau sudah dihapus.", "error");
+    const label = `${target.nama_proktor} (${target.username})`;
+    askConfirm(
+      "Hapus Data Guru / Proktor",
+      `Apakah Anda yakin ingin menghapus akun proktor ${label}?`,
+      async () => {
+        await runWithBusyLock(`delete-proktor-${target.id}`, async () => {
+          try {
+            await dbDelete('proktor', target.id);
+            if (String(STATE.editProktorId) === String(target.id)) STATE.editProktorId = null;
+            STATE.proktorList = STATE.proktorList.filter(x => String(x.id) !== String(target.id));
+            await loadRoleScopedData();
+            notify(`Akun proktor ${label} berhasil dihapus.`, "success");
+          } catch (err) {
+            notify("Gagal menghapus proktor: " + err.message, "error");
+          }
+        });
+      }
+    );
+  },
+  downloadTemplateProktor,
+  handleImportProktorExcel,
+  exportProktorExcel,
+  addRuang,
+  startEditRuang: (encodedId) => {
+    STATE.editRuangId = decodeURIComponent(String(encodedId || ''));
+    render();
+    document.getElementById('form-ruang')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  },
+  cancelEditRuang: () => {
+    STATE.editRuangId = null;
+    render();
+  },
+  deleteRuang,
+  downloadTemplateRuang,
+  handleImportRuangExcel,
+  exportRuangExcel,
+  addSesi,
+  startEditSesi: (encodedId) => {
+    STATE.editSesiId = decodeURIComponent(String(encodedId || ''));
+    render();
+    document.getElementById('form-sesi')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  },
+  cancelEditSesi: () => {
+    STATE.editSesiId = null;
+    render();
+  },
+  deleteSesi,
+  downloadTemplateSesi,
+  handleImportSesiExcel,
+  exportSesiExcel,
+  openMapelModal: (encodedId = null) => {
+    STATE.editMapelId = encodedId ? decodeURIComponent(String(encodedId)) : null;
+    STATE.mapelModalOpen = true;
+    render();
+  },
+  closeMapelModal: () => {
+    STATE.mapelModalOpen = false;
+    STATE.editMapelId = null;
+    render();
+  },
+  onMapelAllSchoolsToggle: (checked) => {
+    const boxes = document.querySelectorAll('.mapel-school-checkbox');
+    if (checked) boxes.forEach(cb => { cb.checked = false; });
+    const countEl = document.getElementById('mapel-school-count');
+    if (countEl) {
+      const n = document.querySelectorAll('.mapel-school-checkbox:checked').length;
+      countEl.textContent = (checked || n === 0) ? 'Semua Sekolah' : `${n} Sekolah Dipilih`;
     }
   },
   onMapelSchoolCheckChange: () => {
