@@ -511,6 +511,7 @@ const STATE = {
   antiCheatReason: '',
   violationCount: 0,
   lastResult: null,
+  serverTimeOffsetMs: 0,
 
   realtimeChannel: null,
   realtimeConnected: false,
@@ -666,9 +667,40 @@ function normalizeProktorRole(val) {
 }
 
 function getWIBNow() {
-  const now = new Date();
+  const now = new Date(getSyncedNowMs());
   const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
   return new Date(utc + (3600000 * 7));
+}
+
+function getSyncedNowMs() {
+  return Date.now() + (Number(STATE.serverTimeOffsetMs) || 0);
+}
+
+async function syncServerClock() {
+  if (IS_PREVIEW || !window.location.protocol.startsWith('http')) return;
+  try {
+    const t0 = Date.now();
+    const res = await fetch(window.location.href, { method: 'HEAD', cache: 'no-store' });
+    const dateHeader = res.headers.get('date');
+    if (!dateHeader) return;
+    const serverMs = Date.parse(dateHeader);
+    if (!Number.isFinite(serverMs)) return;
+    const t1 = Date.now();
+    const rttHalf = Math.round((t1 - t0) / 2);
+    const offset = (serverMs + rttHalf) - t1;
+    // Terapkan koreksi otomatis jika jam perangkat berbeda > 5 detik dari waktu server
+    STATE.serverTimeOffsetMs = Math.abs(offset) > 5000 ? offset : 0;
+  } catch (_) {}
+}
+
+function getMapelScheduleSig(mapel) {
+  if (!mapel) return '';
+  return [
+    String(mapel.tanggal_mulai || ''),
+    String(mapel.jam_mulai || ''),
+    String(mapel.jam_selesai || ''),
+    String(mapel.durasi_menit || '')
+  ].join('|');
 }
 
 function formatTime(sec) {
@@ -785,7 +817,7 @@ function evaluateMapelAccessGuard(mapel) {
       endMs: null
     };
   }
-  const nowMs = Date.now();
+  const nowMs = getSyncedNowMs();
   const { startMs, endMs } = getMapelScheduleBoundsWIB(mapel);
   if (startMs !== null && nowMs < startMs) {
     const jamMulai = String(mapel.jam_mulai || '00:00').slice(0, 5);
@@ -1776,7 +1808,7 @@ function handleStudentMapelRemoteUpdate(updatedMapel) {
       const currentEnd = STATE.activeExamEndTimeMs || guard.endMs;
       if (guard.endMs < currentEnd) {
         STATE.activeExamEndTimeMs = guard.endMs;
-        STATE.timeLeftSec = Math.max(0, Math.floor((STATE.activeExamEndTimeMs - Date.now()) / 1000));
+        STATE.timeLeftSec = Math.max(0, Math.floor((STATE.activeExamEndTimeMs - getSyncedNowMs()) / 1000));
         const timerEl = document.getElementById('cbt-timer-display');
         if (timerEl) timerEl.textContent = formatTime(STATE.timeLeftSec);
         saveStudentDraftToLocal(STATE.activeExamEndTimeMs);
@@ -2040,7 +2072,7 @@ async function handleLogin(e) {
         const password = fd.get('password').trim();
         const token = fd.get('token').trim().toUpperCase();
 
-        await loadInitialData();
+        await Promise.all([loadInitialData(), syncServerClock()]);
 
         let siswa = null;
         if (IS_PREVIEW) {
@@ -2258,22 +2290,22 @@ async function startStudentExam(mapelId) {
       }
 
       // 2. Acak Urutan Pilihan Jawaban PG & PGK (atau pulihkan dari draft sesi aktif)
-      if (latestMapelMeta.acak_opsi) {
-        orderedSoal = orderedSoal.map(q => {
-          if (q.jenis_soal === 'PG' || q.jenis_soal === 'PGK') {
-            const keys = Object.keys(q.opsi_jawaban || {}).filter(k => String(q.opsi_jawaban[k] ?? '').trim() !== '');
-            const order = (draft && draft.opsiOrder && Array.isArray(draft.opsiOrder[q.id]))
-              ? draft.opsiOrder[q.id].filter(k => keys.includes(k))
-              : shuffleArray(keys);
-            return { ...q, _opsiKeys: order.length === keys.length ? order : shuffleArray(keys) };
-          }
-          return q;
-        });
-      }
-
-      const nowMs = Date.now();
+      const nowMs = getSyncedNowMs();
       const durationMs = (Number(latestMapelMeta.durasi_menit) || 60) * 60 * 1000;
-      const durationEndMs = (draft && draft.endTimeMs) ? draft.endTimeMs : (nowMs + durationMs);
+      const currentScheduleSig = getMapelScheduleSig(latestMapelMeta);
+
+      // Abaikan endTimeMs lama dari localStorage jika sudah kadaluarsa atau jadwal ujian telah diperbarui
+      const hasValidDraftEnd = Boolean(
+        draft &&
+        draft.endTimeMs &&
+        Number(draft.endTimeMs) > nowMs &&
+        (!draft.scheduleSig || draft.scheduleSig === currentScheduleSig) &&
+        (accessGuard.startMs === null || Number(draft.endTimeMs) > accessGuard.startMs)
+      );
+
+      const durationEndMs = hasValidDraftEnd
+        ? Number(draft.endTimeMs)
+        : (nowMs + durationMs);
       const effectiveEndTimeMs = accessGuard.endMs !== null
         ? Math.min(durationEndMs, accessGuard.endMs)
         : durationEndMs;
@@ -2415,7 +2447,8 @@ function saveStudentDraftToLocal(customEndTimeMs = null) {
       answers: STATE.answers || {},
       ragu: STATE.ragu || {},
       violations: STATE.violationCount || 0,
-      endTimeMs: customEndTimeMs || STATE.activeExamEndTimeMs || (Date.now() + ((STATE.timeLeftSec || 0) * 1000)),
+      scheduleSig: getMapelScheduleSig(STATE.activeExamMapel),
+      endTimeMs: customEndTimeMs || STATE.activeExamEndTimeMs || (getSyncedNowMs() + ((STATE.timeLeftSec || 0) * 1000)),
       soalOrder: (STATE.examSoal || []).map(q => q.id),
       opsiOrder
     };
@@ -2445,7 +2478,7 @@ function startExamTimer(endTimeMs) {
     const effectiveEnd = guard.endMs !== null
       ? Math.min(STATE.activeExamEndTimeMs, guard.endMs)
       : STATE.activeExamEndTimeMs;
-    const remaining = Math.max(0, Math.floor((effectiveEnd - Date.now()) / 1000));
+    const remaining = Math.max(0, Math.floor((effectiveEnd - getSyncedNowMs()) / 1000));
     STATE.timeLeftSec = remaining;
 
     const timerEl = document.getElementById('cbt-timer-display');
@@ -8518,7 +8551,7 @@ window.CBT = {
 };
 
 (async function init() {
-  await loadInitialData();
+  await Promise.all([loadInitialData(), syncServerClock()]);
   if (!IS_PREVIEW && sb) {
     const { data } = await sb.auth.getSession();
     if (data?.session?.user) {
