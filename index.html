@@ -1328,6 +1328,54 @@ function teardownRealtime() {
   }
 }
 
+async function syncLiveMonitoringAndHasil({ includeHasil = false, silent = true, forceRender = false } = {}) {
+  if (!STATE.role || STATE.role === 'siswa') return;
+  const lockedSchoolId = STATE.role === 'proktor' ? STATE.user.sekolah_id : null;
+  try {
+    const jadwalCols = 'id,sekolah_id,siswa_id,mapel_id,ruang_id,sesi_id,status_ujian,pelanggaran';
+    const [latestJadwal, latestHasil] = await Promise.all([
+      dbSelect('jadwal_peserta', null, lockedSchoolId, jadwalCols),
+      includeHasil ? dbSelect('hasil_ujian', null, lockedSchoolId) : Promise.resolve(null)
+    ]);
+
+    const prevJadwalSnap = JSON.stringify(
+      (STATE.jadwalList || []).map(j => `${j.id}:${j.status_ujian}:${j.pelanggaran}:${j.ruang_id || ''}:${j.sesi_id || ''}`)
+    );
+    const nextJadwalSnap = JSON.stringify(
+      (latestJadwal || []).map(j => `${j.id}:${j.status_ujian}:${j.pelanggaran}:${j.ruang_id || ''}:${j.sesi_id || ''}`)
+    );
+
+    let changed = prevJadwalSnap !== nextJadwalSnap;
+    STATE.jadwalList = latestJadwal;
+
+    if (includeHasil && Array.isArray(latestHasil)) {
+      const prevHasilSnap = JSON.stringify(
+        (STATE.hasilList || []).map(h => `${h.id}:${h.skor_akhir}:${h.status}:${h.waktu_selesai || ''}`)
+      );
+      const nextHasilSnap = JSON.stringify(
+        latestHasil.map(h => `${h.id}:${h.skor_akhir}:${h.status}:${h.waktu_selesai || ''}`)
+      );
+      if (prevHasilSnap !== nextHasilSnap) changed = true;
+      STATE.hasilList = latestHasil;
+    }
+
+    const activeTag = document.activeElement?.tagName || '';
+    const isTyping = ['INPUT', 'TEXTAREA', 'SELECT'].includes(activeTag);
+    const isEditingModal = Boolean(STATE.koreksiHasilId || STATE.mapelModalOpen || STATE.confirmModal);
+
+    if ((changed || forceRender) && (!silent || (!isTyping && !isEditingModal))) {
+      render();
+    }
+    if (!silent) {
+      notify("Data progres & hasil ujian terbaru berhasil disinkronkan.", "success");
+    }
+  } catch (err) {
+    if (!silent) {
+      notify("Gagal menyinkronkan data live: " + err.message, "error");
+    }
+  }
+}
+
 function setupTargetedRealtime() {
   teardownRealtime();
   if (!STATE.role || !STATE.user) return;
@@ -1428,17 +1476,17 @@ function setupTargetedRealtime() {
       }
     }
 
-    // Fallback polling Admin/Proktor hanya berjalan jika koneksi Realtime sedang tidak terhubung
+    // Sinkronisasi otomatis ringan (tiap 15 detik) saat tab aktif pada Dashboard/Monitoring atau Koreksi & Rekap Nilai
+    // Tetap berjalan agar progres & nilai siswa selalu terbarui otomatis meski publikasi Realtime tabel belum diaktifkan
     STATE.fallbackPollInterval = setInterval(async () => {
       if (!STATE.role || STATE.role === 'siswa') return;
-      if (!IS_PREVIEW && STATE.realtimeConnected) return;
-      try {
-        const cols = 'id,sekolah_id,siswa_id,mapel_id,ruang_id,sesi_id,status_ujian,pelanggaran';
-        const latestJadwal = await dbSelect('jadwal_peserta', null, lockedSchoolId, cols);
-        STATE.jadwalList = latestJadwal;
-        if (STATE.adminTab === 'dashboard' || STATE.role === 'proktor') render();
-      } catch (_) {}
-    }, 60000);
+      if (document.hidden) return;
+      const isMonitoringView = (STATE.role === 'proktor' && STATE.proktorTab === 'monitoring') ||
+        (STATE.role === 'admin' && STATE.adminTab === 'dashboard');
+      const isHasilView = (STATE.role === 'admin' && STATE.adminTab === 'hasil');
+      if (!isMonitoringView && !isHasilView) return;
+      await syncLiveMonitoringAndHasil({ includeHasil: isHasilView, silent: true });
+    }, 15000);
   }
 }
 
@@ -5745,6 +5793,114 @@ function renderAdminContent() {
     `;
   }
 
+  if (t === 'siswa') {
+    const editingSiswa = STATE.editSiswaId
+      ? STATE.siswaList.find(s => String(s.id) === String(STATE.editSiswaId))
+      : null;
+    const selectedSchoolSiswa = editingSiswa ? editingSiswa.sekolah_id : STATE.activeSekolahId;
+
+    return `
+      <div class="glass-panel rounded-2xl p-5 shadow-sm space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <h2 class="text-base font-extrabold text-slate-900">Manajemen Data Siswa (${scopedSiswa.length} Peserta)</h2>
+          <div class="flex flex-wrap gap-2">
+            <button onclick="CBT.downloadTemplateSiswa()" class="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-bold">⬇ Template Excel</button>
+            <label class="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold cursor-pointer">
+              ⬆ Import Excel (.xlsx)
+              <input type="file" accept=".xlsx,.xls,.csv" onchange="CBT.handleImportSiswaExcel(event)" class="hidden" />
+            </label>
+            <button onclick="CBT.exportSiswaExcel()" class="px-3 py-1.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold">⬇ Export Excel</button>
+            <button onclick="CBT.bulkDeleteSiswa()" class="px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold">Hapus (${STATE.selectedSiswaIds.length})</button>
+          </div>
+        </div>
+
+        <form id="form-siswa" onsubmit="CBT.addSiswa(event)" class="${editingSiswa ? 'bg-blue-50/70 border-blue-400 ring-2 ring-blue-100' : 'bg-slate-50 border-slate-200'} p-3.5 rounded-2xl border space-y-2.5 transition">
+          ${editingSiswa ? `
+            <div class="flex items-center justify-between text-xs">
+              <span class="font-extrabold text-blue-900">✏️ Mode Edit Siswa: ${esc(editingSiswa.nama_lengkap)} (${esc(editingSiswa.username)})</span>
+              <button type="button" onclick="CBT.cancelEditSiswa()" class="px-2.5 py-1 rounded-lg bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold">Batal Edit</button>
+            </div>
+          ` : ''}
+          <div class="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
+            <select name="sekolah_id" required class="px-3 py-2 rounded-xl border text-xs bg-white font-bold">
+              ${STATE.sekolahList.map(sk => `<option value="${sk.id}" ${sk.id===selectedSchoolSiswa?'selected':''}>${esc(sk.nama_sekolah)} (${esc(sk.npsn)})</option>`).join('')}
+            </select>
+            <input name="username" required value="${esc(editingSiswa?.username || '')}" placeholder="NISN / Username" class="px-3 py-2 rounded-xl border text-xs bg-white" />
+            <input name="password" required value="${esc(editingSiswa ? editingSiswa.password : '123')}" placeholder="Password" class="px-3 py-2 rounded-xl border text-xs bg-white" />
+            <input name="nama_lengkap" required value="${esc(editingSiswa?.nama_lengkap || '')}" placeholder="Nama Lengkap Siswa" class="px-3 py-2 rounded-xl border text-xs bg-white" />
+            <div class="grid grid-cols-2 gap-2">
+              <input name="kelas" required value="${esc(editingSiswa ? editingSiswa.kelas : 'VI')}" placeholder="Kelas (VI)" class="px-3 py-2 rounded-xl border text-xs bg-white" />
+              <select name="jenis_kelamin" class="px-2.5 py-2 rounded-xl border text-xs bg-white">
+                <option value="Laki-Laki" ${(!editingSiswa || editingSiswa.jenis_kelamin==='Laki-Laki')?'selected':''}>Laki-Laki</option>
+                <option value="Perempuan" ${(editingSiswa && editingSiswa.jenis_kelamin==='Perempuan')?'selected':''}>Perempuan</option>
+              </select>
+            </div>
+            <select name="ruang_id" class="px-3 py-2 rounded-xl border text-xs bg-white">
+              <option value="">-- Pilih Ruang --</option>
+              ${STATE.ruang.map(r => {
+                const sk = getSekolahById(r.sekolah_id);
+                return `<option value="${r.id}" ${editingSiswa && String(editingSiswa.ruang_id)===String(r.id)?'selected':''}>${esc(sk.nama_sekolah)} - ${esc(r.kode_ruang)}</option>`;
+              }).join('')}
+            </select>
+            <select name="sesi_id" class="px-3 py-2 rounded-xl border text-xs bg-white">
+              <option value="">-- Pilih Sesi --</option>
+              ${STATE.sesi.map(se => {
+                const sk = getSekolahById(se.sekolah_id);
+                return `<option value="${se.id}" ${editingSiswa && String(editingSiswa.sesi_id)===String(se.id)?'selected':''}>${esc(sk.nama_sekolah)} - ${esc(formatSesiDisplay(se))}</option>`;
+              }).join('')}
+            </select>
+            <button type="submit" class="px-4 py-2 rounded-xl ${editingSiswa ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-700 hover:bg-blue-800'} text-white font-bold text-xs">
+              ${editingSiswa ? 'Simpan Perubahan' : '+ Tambah Siswa'}
+            </button>
+          </div>
+        </form>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-slate-50 border-b text-slate-600">
+              <tr>
+                <th class="p-2.5 w-8"><input type="checkbox" onchange="CBT.toggleAllSiswa(this.checked)" /></th>
+                <th class="p-2.5">Asal Sekolah (NPSN)</th>
+                <th class="p-2.5">NISN / User</th>
+                <th class="p-2.5">Password</th>
+                <th class="p-2.5">Nama Lengkap</th>
+                <th class="p-2.5">Kelas</th>
+                <th class="p-2.5">Ruang &amp; Sesi</th>
+                <th class="p-2.5">Aksi</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              ${scopedSiswa.length === 0 ? `
+                <tr><td colspan="8" class="p-6 text-center text-slate-400">Belum ada data siswa terdaftar pada sekolah ini.</td></tr>
+              ` : scopedSiswa.map(s => {
+                const sek = getSekolahById(s.sekolah_id);
+                const r = STATE.ruang.find(x => x.id === s.ruang_id);
+                const se = STATE.sesi.find(x => x.id === s.sesi_id);
+                const checked = STATE.selectedSiswaIds.includes(s.id);
+                const safeId = encodeURIComponent(String(s.id ?? ''));
+                const isEditingRow = editingSiswa && String(editingSiswa.id) === String(s.id);
+                return `
+                  <tr class="${isEditingRow ? 'bg-blue-50/70' : ''}">
+                    <td class="p-2.5"><input type="checkbox" ${checked?'checked':''} onchange="CBT.toggleSiswaSelect('${s.id}', this.checked)" /></td>
+                    <td class="p-2.5"><span class="px-2 py-0.5 rounded bg-blue-50 text-blue-800 font-bold text-[10px]">${esc(sek.nama_sekolah)}</span></td>
+                    <td class="p-2.5 font-mono font-bold">${esc(s.username)}</td>
+                    <td class="p-2.5 font-mono">${esc(s.password)}</td>
+                    <td class="p-2.5 font-semibold">${esc(s.nama_lengkap)}</td>
+                    <td class="p-2.5">${esc(s.kelas)}</td>
+                    <td class="p-2.5">${esc(r?.kode_ruang || '-')} ${se ? `• <span class="text-emerald-700 font-semibold">${esc(formatSesiDisplay(se))}</span>` : ''}</td>
+                    <td class="p-2.5 whitespace-nowrap">
+                      <button type="button" onclick="CBT.startEditSiswa('${safeId}')" class="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold cursor-pointer">Edit</button>
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
   if (t === 'proktor') {
     const editingProktor = STATE.editProktorId
       ? STATE.proktorList.find(p => String(p.id) === String(STATE.editProktorId))
@@ -6518,6 +6674,7 @@ function renderAdminContent() {
                 <option value="Semua">Semua Paket Ujian</option>
                 ${STATE.mapelList.map(m => `<option value="${m.id}" ${STATE.selectedMapelId===m.id?'selected':''}>${esc(m.nama_mapel)}</option>`).join('')}
               </select>
+              <button type="button" onclick="CBT.syncLiveHasil()" class="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-extrabold transition">↻ Refresh Nilai</button>
               <button type="button" onclick="CBT.tarikNilaiBelumTerkirim()"
                 title="Tarik dan finalisasi nilai peserta yang masih berstatus Sedang Mengerjakan / Terkunci"
                 class="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold shadow-xs transition">
@@ -7057,6 +7214,23 @@ GRANT USAGE ON SCHEMA public TO anon, authenticated;
 GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated;
 
+-- AKTIFKAN REALTIME PUBLICATION UNTUK MONITORING & REKAP NILAI LIVE
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_publication_tables
+        WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'jadwal_peserta'
+    ) THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.jadwal_peserta;
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_publication_tables
+        WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'hasil_ujian'
+    ) THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE public.hasil_ujian;
+    END IF;
+END $$;
+
 NOTIFY pgrst, 'reload schema';`;
 }
 
@@ -7477,42 +7651,42 @@ window.CBT = {
   },
   downloadTemplateProktor,
   handleImportProktorExcel,
-  exportProktorExcel,
-  addRuang,
-  startEditRuang: (encodedId) => {
-    STATE.editRuangId = decodeURIComponent(String(encodedId || ''));
+  setProktorTab: async (tab) => {
+    STATE.proktorTab = tab;
     render();
-    document.getElementById('form-ruang')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (tab === 'monitoring') {
+      await syncLiveMonitoringAndHasil({ includeHasil: false, silent: true, forceRender: true });
+    }
   },
-  cancelEditRuang: () => { STATE.editRuangId = null; render(); },
-  deleteRuang,
-  downloadTemplateRuang,
-  handleImportRuangExcel,
-  exportRuangExcel,
-  addSesi,
-  startEditSesi: (encodedId) => {
-    STATE.editSesiId = decodeURIComponent(String(encodedId || ''));
+  refreshData: loadRoleScopedData,
+  syncLiveHasil: () => syncLiveMonitoringAndHasil({ includeHasil: true, silent: false, forceRender: true }),
+  resetLogin: proktorResetLogin,
+  unlockLogin: proktorResetLogin,
+  bulkResetLogin: proktorBulkResetLockedLogins,
+  resetSesi: proktorResetSesi,
+  setAdminTab: async (tab) => {
+    STATE.adminTab = tab;
+    STATE.mobileMoreMenuOpen = false;
+    if (tab !== 'sekolah') STATE.editSekolahId = null;
+    if (tab !== 'siswa') STATE.editSiswaId = null;
+    if (tab !== 'proktor') STATE.editProktorId = null;
+    if (tab !== 'ruang_sesi') {
+      STATE.editRuangId = null;
+      STATE.editSesiId = null;
+    }
+    if (tab === 'bank_soal' && (!STATE.selectedMapelId || STATE.selectedMapelId === 'Semua') && STATE.mapelList.length > 0) {
+      STATE.selectedMapelId = STATE.mapelList[0].id;
+      STATE.editSoalId = null;
+      STATE.newSoalNomor = null;
+      STATE.formStimulusId = undefined;
+      await loadBankSoalByMapel(STATE.selectedMapelId);
+      STATE.editSoalId = STATE.soalList[0]?.id || null;
+    }
     render();
-    document.getElementById('form-sesi')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  },
-  cancelEditSesi: () => { STATE.editSesiId = null; render(); },
-  deleteSesi,
-  downloadTemplateSesi,
-  handleImportSesiExcel,
-  exportSesiExcel,
-  openMapelModal: (encodedId = null) => {
-    STATE.editMapelId = encodedId ? decodeURIComponent(String(encodedId)) : null;
-    STATE.mapelModalOpen = true;
-    render();
-  },
-  closeMapelModal: () => { STATE.mapelModalOpen = false; STATE.editMapelId = null; render(); },
-  onMapelAllSchoolsToggle: (checked) => {
-    const boxes = document.querySelectorAll('.mapel-school-checkbox');
-    if (checked) boxes.forEach(cb => { cb.checked = false; });
-    const countEl = document.getElementById('mapel-school-count');
-    if (countEl) {
-      const n = document.querySelectorAll('.mapel-school-checkbox:checked').length;
-      countEl.textContent = (checked || n === 0) ? 'Semua Sekolah' : `${n} Sekolah Dipilih`;
+    if (tab === 'dashboard') {
+      await syncLiveMonitoringAndHasil({ includeHasil: false, silent: true, forceRender: true });
+    } else if (tab === 'hasil') {
+      await syncLiveMonitoringAndHasil({ includeHasil: true, silent: true, forceRender: true });
     }
   },
   onMapelSchoolCheckChange: () => {
@@ -7627,7 +7801,7 @@ window.CBT = {
   selectMapelHasil: async (mapelId) => {
     STATE.selectedMapelId = mapelId;
     if (mapelId !== 'Semua') await loadBankSoalByMapel(mapelId);
-    render();
+    await syncLiveMonitoringAndHasil({ includeHasil: true, silent: true, forceRender: true });
   },
   onFormJenisSoalChange: (jenis) => {
     document.querySelectorAll('.soal-type-box').forEach(el => el.classList.add('hidden'));
