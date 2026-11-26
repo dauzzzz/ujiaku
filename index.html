@@ -832,6 +832,20 @@ function getAppBranding() {
   };
 }
 
+function getPortalLoginLogoRaw() {
+  const fromDb = (STATE.sekolahList || []).find(sk => sk && String(sk.portal_logo_url || '').trim())?.portal_logo_url;
+  if (fromDb && String(fromDb).trim()) return String(fromDb).trim();
+  try {
+    const local = localStorage.getItem('cbt_portal_login_logo');
+    if (local && local.trim()) return local.trim();
+  } catch (_) {}
+  return '';
+}
+
+function getPortalLoginLogo() {
+  return getPortalLoginLogoRaw() || DEFAULT_SHIELD_SVG;
+}
+
 function getMapelSchoolIds(mapel) {
   if (!mapel) return [];
   if (Array.isArray(mapel.sekolah_ids) && mapel.sekolah_ids.length > 0) {
@@ -980,6 +994,16 @@ function onLogoFileUpload(e, targetSchoolId) {
   reader.onload = (evt) => {
     const dataUrl = String(evt.target?.result || '');
     if (!dataUrl) return notify("Gagal membaca file logo.", "error");
+    if (targetSchoolId === 'portal-login') {
+      const portalForm = document.getElementById('form-portal-logo');
+      if (portalForm) {
+        const urlInput = portalForm.querySelector('[name="portal_logo_url"]');
+        if (urlInput) urlInput.value = dataUrl;
+      }
+      window.CBT.onSchoolLogoInput('portal-login', dataUrl);
+      notify("Logo portal login dari file berhasil dimuat. Klik Simpan Logo Login untuk menerapkan.", "success");
+      return;
+    }
     const formEl = document.getElementById(`form-sekolah-${targetSchoolId}`) || document.getElementById('form-app-branding');
     if (formEl) {
       const urlInput = formEl.querySelector('[name="logo_url"]');
@@ -1112,12 +1136,17 @@ async function loadInitialData() {
       npsn: '-',
       kecamatan: '',
       logo_url: '',
+      portal_logo_url: '',
       app_badge: 'PUSDATIN • ANBK',
       app_subtitle: 'Sistem Asesmen Berbasis Komputer',
       token_aktif: '',
       tanggal_ujian: getWIBNow().toISOString().slice(0, 10),
       ...sk
     }));
+    const dbPortalLogo = STATE.sekolahList.find(sk => String(sk.portal_logo_url || '').trim())?.portal_logo_url;
+    if (dbPortalLogo) {
+      try { localStorage.setItem('cbt_portal_login_logo', String(dbPortalLogo).trim()); } catch (_) {}
+    }
     if (!STATE.activeSekolahId && STATE.sekolahList.length > 0) {
       STATE.activeSekolahId = STATE.sekolahList[0].id;
     }
@@ -3584,6 +3613,76 @@ async function updateTokenSekolah(e) {
   }, btn);
 }
 
+async function savePortalLoginLogo(e) {
+  e.preventDefault();
+  const btn = e.target.querySelector('button[type="submit"]');
+  await runWithBusyLock('save-portal-logo', async () => {
+    try {
+      const fd = new FormData(e.target);
+      const url = String(fd.get('portal_logo_url') || '').trim();
+      try {
+        if (url) localStorage.setItem('cbt_portal_login_logo', url);
+        else localStorage.removeItem('cbt_portal_login_logo');
+      } catch (_) {}
+
+      const primarySchool = STATE.sekolahList[0];
+      let savedToDb = false;
+      if (primarySchool?.id) {
+        try {
+          await dbUpdate('pengaturan_sekolah', primarySchool.id, { portal_logo_url: url });
+          savedToDb = true;
+        } catch (dbErr) {
+          const msg = String(dbErr?.message || '');
+          if (msg.includes('portal_logo_url') || msg.includes('schema cache')) {
+            if (IS_PREVIEW && MOCK_DB.pengaturan_sekolah?.[0]) {
+              MOCK_DB.pengaturan_sekolah[0].portal_logo_url = url;
+              savedToDb = true;
+            }
+          } else {
+            throw dbErr;
+          }
+        }
+        STATE.sekolahList.forEach((sk, i) => {
+          if (i === 0) sk.portal_logo_url = url;
+          else if (sk.portal_logo_url) sk.portal_logo_url = '';
+        });
+      }
+
+      render();
+      if (savedToDb) {
+        notify("Logo Portal Login Awal berhasil disimpan untuk semua perangkat!", "success");
+      } else {
+        notify("Logo tersimpan di perangkat ini. Jalankan migrasi SQL kolom portal_logo_url di Supabase agar tampil di semua perangkat.", "info");
+      }
+    } catch (err) {
+      notify("Gagal menyimpan logo portal login: " + err.message, "error");
+    }
+  }, btn);
+}
+
+async function resetPortalLoginLogo() {
+  await runWithBusyLock('reset-portal-logo', async () => {
+    try {
+      try { localStorage.removeItem('cbt_portal_login_logo'); } catch (_) {}
+      for (const sk of STATE.sekolahList) {
+        if (sk.portal_logo_url) {
+          try {
+            await dbUpdate('pengaturan_sekolah', sk.id, { portal_logo_url: '' });
+          } catch (_) {}
+          sk.portal_logo_url = '';
+        }
+      }
+      if (IS_PREVIEW && Array.isArray(MOCK_DB.pengaturan_sekolah)) {
+        MOCK_DB.pengaturan_sekolah.forEach(sk => { sk.portal_logo_url = ''; });
+      }
+      render();
+      notify("Logo Portal Login Awal dikembalikan ke logo bawaan CBT.", "success");
+    } catch (err) {
+      notify("Gagal mereset logo portal login: " + err.message, "error");
+    }
+  });
+}
+
 async function addSekolahBaru(e) {
   e.preventDefault();
   if (STATE.editSekolahId) {
@@ -5151,7 +5250,7 @@ function renderHeaderPusdatin(subtitle, rightHtml = '') {
   const s = getSekolahById(STATE.activeSekolahId);
   const brand = getAppBranding();
   const isLoggedIn = Boolean(STATE.role && STATE.user);
-  const displayLogo = isLoggedIn ? (s.logo_url || brand.logo_url || DEFAULT_SHIELD_SVG) : DEFAULT_SHIELD_SVG;
+  const displayLogo = isLoggedIn ? (s.logo_url || brand.logo_url || DEFAULT_SHIELD_SVG) : getPortalLoginLogo();
   const displayBadge = isLoggedIn ? (s.app_badge || brand.app_badge || 'PUSDATIN • ANBK') : 'UJIAKU • CBT';
   const displaySubtitle = subtitle || (isLoggedIn ? (s.app_subtitle || brand.app_subtitle || 'Sistem Asesmen Berbasis Komputer') : 'Sistem Asesmen Berbasis Komputer Multi-Sekolah');
   const schoolTitle = !isLoggedIn
@@ -5186,7 +5285,7 @@ function renderHeaderPusdatin(subtitle, rightHtml = '') {
 }
 
 function renderLoginScreen() {
-  const initLogo = DEFAULT_SHIELD_SVG;
+  const initLogo = getPortalLoginLogo();
   const initBadge = 'UJIAKU • CBT';
   const initSubtitle = 'Platform Ujian Online Multi-Sekolah • Standar Pusdatin';
   const tab = STATE.loginTab;
@@ -6067,6 +6166,37 @@ function renderAdminContent() {
             </div>
           `}
         </div>
+
+        <form id="form-portal-logo" onsubmit="CBT.savePortalLoginLogo(event)" class="glass-panel rounded-2xl p-5 shadow-sm space-y-3 text-xs border-blue-200/80">
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b pb-2.5">
+            <div>
+              <h3 class="text-sm font-extrabold text-slate-900">Logo Portal Login Awal (Umum — Bukan Logo Sekolah)</h3>
+              <p class="text-[11px] text-slate-500">Hanya tampil di halaman Login Awal untuk semua sekolah. Setelah login, logo otomatis berganti ke logo sekolah masing-masing.</p>
+            </div>
+            <label class="px-3 py-1.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold text-[11px] cursor-pointer shrink-0">
+              📁 Pilih File Logo
+              <input type="file" accept="image/*" onchange="CBT.onLogoFileUpload(event, 'portal-login')" class="hidden" />
+            </label>
+          </div>
+          <div class="flex flex-col sm:flex-row items-start sm:items-center gap-3.5 bg-slate-50 p-3 rounded-xl border border-slate-200">
+            <div class="w-14 h-14 rounded-xl bg-white border border-slate-300 p-1.5 flex items-center justify-center shrink-0">
+              <img id="logo-preview-portal-login" src="${esc(getPortalLoginLogo())}"
+                onerror="this.onerror=null;this.src='${DEFAULT_SHIELD_SVG}'"
+                alt="Preview Logo Portal Login" class="w-full h-full object-contain" />
+            </div>
+            <div class="flex-1 w-full space-y-1.5">
+              <label class="font-bold text-slate-700 block">URL Logo Portal Login (Disarankan URL eksternal agar hemat kuota Egress)</label>
+              <input name="portal_logo_url" value="${esc(getPortalLoginLogoRaw())}"
+                oninput="CBT.onSchoolLogoInput('portal-login', this.value)"
+                placeholder="https://.../logo-ujiaku.png (kosongkan untuk logo bawaan CBT)"
+                class="w-full px-3 py-2 rounded-xl border bg-white" />
+            </div>
+          </div>
+          <div class="flex flex-wrap justify-end gap-2">
+            <button type="button" onclick="CBT.resetPortalLoginLogo()" class="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold">Reset Bawaan</button>
+            <button type="submit" class="px-5 py-2 rounded-xl bg-blue-700 hover:bg-blue-800 text-white font-bold shadow">Simpan Logo Login</button>
+          </div>
+        </form>
 
         ${selectedSek ? `
           <form id="form-sekolah-${selectedSek.id}" onsubmit="CBT.saveSekolah(event, '${selectedSek.id}')" class="glass-panel rounded-2xl p-5 shadow-sm space-y-3 text-xs">
@@ -7359,6 +7489,7 @@ CREATE TABLE IF NOT EXISTS public.pengaturan_sekolah (
     npsn TEXT UNIQUE NOT NULL,
     kecamatan TEXT DEFAULT '',
     logo_url TEXT DEFAULT '',
+    portal_logo_url TEXT DEFAULT '',
     app_badge TEXT DEFAULT 'PUSDATIN • ANBK',
     app_subtitle TEXT DEFAULT 'Sistem Asesmen Berbasis Komputer',
     token_aktif TEXT NOT NULL DEFAULT 'SAS2026',
@@ -7367,8 +7498,7 @@ CREATE TABLE IF NOT EXISTS public.pengaturan_sekolah (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 2. RUANG UJIAN (Terisolasi per sekolah_id)
-CREATE TABLE IF NOT EXISTS public.ruang_ujian (
+ALTER TABLE public.pengaturan_sekolah ADD COLUMN IF NOT EXISTS portal_logo_url TEXT DEFAULT '';
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     sekolah_id UUID REFERENCES public.pengaturan_sekolah(id) ON DELETE CASCADE,
     kode_ruang TEXT NOT NULL,
@@ -7927,6 +8057,8 @@ window.CBT = {
   toggleMoreMenu: (val) => { STATE.mobileMoreMenuOpen = (val !== undefined) ? val : !STATE.mobileMoreMenuOpen; render(); },
   setActiveSekolah: (id) => { STATE.activeSekolahId = id; STATE.sekolah = getSekolahById(id); render(); },
   updateToken: updateTokenSekolah,
+  savePortalLoginLogo,
+  resetPortalLoginLogo,
   addSekolah: addSekolahBaru,
   saveSekolah: savePengaturanSekolah,
   startEditSekolah: (encodedId) => {
