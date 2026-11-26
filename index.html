@@ -312,7 +312,7 @@
    SAKLAR KONFIGURASI DEPLOYMENT
    Ubah IS_PREVIEW menjadi false saat deploy ke produksi Supabase
    ============================================================================ */
-const IS_PREVIEW = false;
+const IS_PREVIEW = true;
 const SUPABASE_URL = "https://ejbmfnfkxdeysljcahpx.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_sSkNuJVqOikYbLC3gt7Dng_iU6MMLk9";
 
@@ -520,6 +520,9 @@ const STATE = {
   periodicAutoSaveInterval: null,
   textSaveDebounceTimer: null,
   lastSyncedSnapshotHash: '',
+  lastCloudDraftHash: '',
+  unsyncedAnswerChanges: 0,
+  cloudDraftColumnMissing: false,
 
   loading: false,
   busyKeys: {},
@@ -1511,6 +1514,9 @@ async function checkStudentSessionGuard() {
     }
 
     if (hasColumn && (!remoteToken || String(remoteToken).trim() !== String(localDeviceId).trim())) {
+      if (STATE.siswaStep === 'ujian' && STATE.activeExamMapel) {
+        await syncStudentDraftToCloud(true);
+      }
       const reasonMsg = !remoteToken
         ? "Akun Anda telah di-reset login oleh Proktor. Sesi pada perangkat ini otomatis dihentikan. Silakan login kembali."
         : "Akun Anda terdeteksi telah berpindah dan login di perangkat lain. Sesi pada perangkat ini otomatis dihentikan.";
@@ -2274,11 +2280,81 @@ async function startStudentExam(mapelId) {
       }
 
       const draftKey = `cbt_draft_${STATE.user.id}_${mapelId}`;
-      let draft = null;
+      let localDraft = null;
       try {
         const rawDraft = localStorage.getItem(draftKey);
-        if (rawDraft) draft = JSON.parse(rawDraft);
+        if (rawDraft) localDraft = JSON.parse(rawDraft);
       } catch (_) {}
+
+      let jadwal = STATE.jadwalList.find(j => String(j.mapel_id) === String(mapelId));
+      let cloudDraft = null;
+      if (IS_PREVIEW) {
+        const mockJ = (MOCK_DB.jadwal_peserta || []).find(
+          j => String(j.siswa_id) === String(STATE.user.id) && String(j.mapel_id) === String(mapelId)
+        );
+        if (mockJ?.draft_jawaban && typeof mockJ.draft_jawaban === 'object') {
+          cloudDraft = mockJ.draft_jawaban;
+        }
+      } else if (sb && !STATE.cloudDraftColumnMissing) {
+        try {
+          const { data: jCloud, error: jCloudErr } = await sb
+            .from('jadwal_peserta')
+            .select('id,status_ujian,pelanggaran,draft_jawaban')
+            .eq('siswa_id', STATE.user.id)
+            .eq('mapel_id', mapelId)
+            .maybeSingle();
+          if (jCloudErr) {
+            const msg = String(jCloudErr.message || '');
+            if (msg.includes('draft_jawaban') || msg.includes('schema cache')) {
+              STATE.cloudDraftColumnMissing = true;
+            }
+          } else if (jCloud) {
+            if (jadwal) {
+              jadwal.status_ujian = jCloud.status_ujian || jadwal.status_ujian;
+              jadwal.pelanggaran = jCloud.pelanggaran ?? jadwal.pelanggaran;
+              jadwal.draft_jawaban = jCloud.draft_jawaban || null;
+            }
+            if (jCloud.draft_jawaban && typeof jCloud.draft_jawaban === 'object') {
+              cloudDraft = jCloud.draft_jawaban;
+            }
+          }
+        } catch (_) {}
+      }
+
+      // Gabungkan draft lokal & cloud agar jawaban terbaru dari perangkat lama otomatis pulih di perangkat baru
+      let draft = localDraft;
+      let restoredFromCloud = false;
+      const localAnsCount = Object.keys(localDraft?.answers || {}).length;
+      const cloudAnsCount = Object.keys(cloudDraft?.answers || {}).length;
+      if (cloudDraft && (cloudAnsCount > 0 || Array.isArray(cloudDraft.soalOrder))) {
+        if (!localDraft) {
+          draft = cloudDraft;
+          restoredFromCloud = cloudAnsCount > 0;
+        } else {
+          const localTs = Number(localDraft.updatedAt) || 0;
+          const cloudTs = Number(cloudDraft.updatedAt) || 0;
+          const mergedAnswers = cloudTs >= localTs
+            ? { ...(localDraft.answers || {}), ...(cloudDraft.answers || {}) }
+            : { ...(cloudDraft.answers || {}), ...(localDraft.answers || {}) };
+          const mergedRagu = cloudTs >= localTs
+            ? { ...(localDraft.ragu || {}), ...(cloudDraft.ragu || {}) }
+            : { ...(cloudDraft.ragu || {}), ...(localDraft.ragu || {}) };
+          draft = {
+            ...cloudDraft,
+            ...localDraft,
+            answers: mergedAnswers,
+            ragu: mergedRagu,
+            soalOrder: (Array.isArray(localDraft.soalOrder) && localDraft.soalOrder.length === pkgData.soal.length)
+              ? localDraft.soalOrder
+              : cloudDraft.soalOrder,
+            opsiOrder: localDraft.opsiOrder || cloudDraft.opsiOrder || {},
+            updatedAt: Math.max(localTs, cloudTs)
+          };
+          if (Object.keys(mergedAnswers).length > localAnsCount) {
+            restoredFromCloud = true;
+          }
+        }
+      }
 
       // 1. Acak Urutan Nomor Soal (atau pulihkan dari draft sesi aktif)
       let orderedSoal = [...pkgData.soal];
@@ -2316,7 +2392,6 @@ async function startStudentExam(mapelId) {
         return notify(`Batas waktu jadwal ujian (${String(latestMapelMeta.jam_selesai || '').slice(0, 5)} WIB) telah berakhir.`, "error");
       }
 
-      let jadwal = STATE.jadwalList.find(j => String(j.mapel_id) === String(mapelId));
       const serverViolations = Number(jadwal?.pelanggaran) || 0;
 
       stopKonfirmasiScheduleWatcher();
@@ -2329,10 +2404,16 @@ async function startStudentExam(mapelId) {
       STATE.ragu = (draft && draft.ragu) ? draft.ragu : {};
       STATE.violationCount = serverViolations === 0 ? 0 : ((draft && draft.violations) ? draft.violations : 0);
       STATE.timeLeftSec = Math.max(1, Math.floor((effectiveEndTimeMs - nowMs) / 1000));
-      STATE.lastSyncedSnapshotHash = JSON.stringify(STATE.answers);
+      const initialDraftHash = JSON.stringify({ a: STATE.answers, r: STATE.ragu });
+      STATE.lastSyncedSnapshotHash = initialDraftHash;
+      STATE.lastCloudDraftHash = cloudDraft ? JSON.stringify({ a: cloudDraft.answers || {}, r: cloudDraft.ragu || {} }) : initialDraftHash;
+      STATE.unsyncedAnswerChanges = 0;
       STATE.siswaStep = 'ujian';
 
       saveStudentDraftToLocal(effectiveEndTimeMs);
+      if (restoredFromCloud) {
+        notify(`Jawaban sebelumnya (${Object.keys(STATE.answers).length} soal) berhasil dipulihkan otomatis.`, "success");
+      }
 
       if (!jadwal) {
         const newJadwalPayload = {
@@ -2450,10 +2531,72 @@ function saveStudentDraftToLocal(customEndTimeMs = null) {
       scheduleSig: getMapelScheduleSig(STATE.activeExamMapel),
       endTimeMs: customEndTimeMs || STATE.activeExamEndTimeMs || (getSyncedNowMs() + ((STATE.timeLeftSec || 0) * 1000)),
       soalOrder: (STATE.examSoal || []).map(q => q.id),
-      opsiOrder
+      opsiOrder,
+      updatedAt: Date.now()
     };
     localStorage.setItem(`cbt_draft_${STATE.user.id}_${STATE.activeExamMapel.id}`, JSON.stringify(draftPayload));
   } catch (_) {}
+}
+
+async function syncStudentDraftToCloud(force = false) {
+  if (STATE.role !== 'siswa' || STATE.siswaStep !== 'ujian' || !STATE.user?.id || !STATE.activeExamMapel?.id) return;
+  if (STATE.cloudDraftColumnMissing || STATE.busyKeys['cloud-draft-sync']) return;
+
+  const currentHash = JSON.stringify({ a: STATE.answers || {}, r: STATE.ragu || {} });
+  if (!force && currentHash === STATE.lastCloudDraftHash) return;
+
+  const mapelId = STATE.activeExamMapel.id;
+  const jadwal = STATE.jadwalList.find(j => String(j.mapel_id) === String(mapelId));
+  if (!jadwal?.id) return;
+
+  const opsiOrder = {};
+  (STATE.examSoal || []).forEach(q => {
+    if (Array.isArray(q._opsiKeys)) opsiOrder[q.id] = q._opsiKeys;
+  });
+  const cloudPayload = {
+    answers: STATE.answers || {},
+    ragu: STATE.ragu || {},
+    soalOrder: (STATE.examSoal || []).map(q => q.id),
+    opsiOrder,
+    updatedAt: Date.now()
+  };
+
+  STATE.busyKeys['cloud-draft-sync'] = true;
+  try {
+    if (IS_PREVIEW) {
+      const mRow = (MOCK_DB.jadwal_peserta || []).find(j => String(j.id) === String(jadwal.id));
+      if (mRow) mRow.draft_jawaban = cloudPayload;
+    } else if (sb) {
+      const { error } = await sb
+        .from('jadwal_peserta')
+        .update({ draft_jawaban: cloudPayload })
+        .eq('id', jadwal.id)
+        .eq('sekolah_id', STATE.user.sekolah_id);
+      if (error) {
+        const msg = String(error.message || '');
+        if (msg.includes('draft_jawaban') || msg.includes('schema cache')) {
+          STATE.cloudDraftColumnMissing = true;
+          return;
+        }
+        throw error;
+      }
+    }
+    jadwal.draft_jawaban = cloudPayload;
+    STATE.lastCloudDraftHash = currentHash;
+    STATE.unsyncedAnswerChanges = 0;
+  } catch (_) {
+    // Abaikan kegagalan jaringan sementara; akan dicoba ulang pada siklus 60 detik berikutnya
+  } finally {
+    delete STATE.busyKeys['cloud-draft-sync'];
+  }
+}
+
+function markAnswerChangedForCloudSync() {
+  STATE.unsyncedAnswerChanges = (Number(STATE.unsyncedAnswerChanges) || 0) + 1;
+  if (STATE.unsyncedAnswerChanges >= 5) {
+    STATE.unsyncedAnswerChanges = 0;
+    syncStudentDraftToCloud(false);
+  }
 }
 
 function startExamTimer(endTimeMs) {
@@ -2494,12 +2637,18 @@ function startExamTimer(endTimeMs) {
 
 function startPeriodicAutoSave() {
   if (STATE.periodicAutoSaveInterval) clearInterval(STATE.periodicAutoSaveInterval);
+  let tickCount = 0;
   STATE.periodicAutoSaveInterval = setInterval(() => {
     if (STATE.role !== 'siswa' || STATE.siswaStep !== 'ujian') return;
+    tickCount++;
     const currentHash = JSON.stringify({ a: STATE.answers, r: STATE.ragu });
     if (currentHash !== STATE.lastSyncedSnapshotHash) {
       STATE.lastSyncedSnapshotHash = currentHash;
       saveStudentDraftToLocal();
+    }
+    // Sinkronisasi ringan draf jawaban ke Supabase setiap 60 detik (tiap 4 siklus 15 detik) jika ada perubahan
+    if (tickCount % 4 === 0 && currentHash !== STATE.lastCloudDraftHash) {
+      syncStudentDraftToCloud(false);
     }
   }, 15000);
 }
@@ -2507,6 +2656,7 @@ function startPeriodicAutoSave() {
 function setStudentAnswer(soalId, value) {
   STATE.answers[soalId] = value;
   saveStudentDraftToLocal();
+  markAnswerChangedForCloudSync();
   render();
 }
 
@@ -2517,6 +2667,7 @@ function toggleStudentPGK(soalId, key) {
   else cur.push(key);
   STATE.answers[soalId] = cur;
   saveStudentDraftToLocal();
+  markAnswerChangedForCloudSync();
   render();
 }
 
@@ -2527,6 +2678,7 @@ function setStudentSubAnswer(soalId, subKey, value) {
   cur[subKey] = value;
   STATE.answers[soalId] = cur;
   saveStudentDraftToLocal();
+  markAnswerChangedForCloudSync();
   render();
 }
 
@@ -2535,6 +2687,7 @@ function onStudentTextAnswerInput(soalId, value) {
   if (STATE.textSaveDebounceTimer) clearTimeout(STATE.textSaveDebounceTimer);
   STATE.textSaveDebounceTimer = setTimeout(() => {
     saveStudentDraftToLocal();
+    markAnswerChangedForCloudSync();
   }, 400);
 }
 
@@ -2580,8 +2733,18 @@ async function executeSubmitExam(isAuto = false, autoReason = '') {
 
       const jadwal = STATE.jadwalList.find(j => String(j.mapel_id) === String(mapelId));
       if (jadwal) {
-        await dbUpdate('jadwal_peserta', jadwal.id, { status_ujian: 'Selesai' }, sekolahId);
+        try {
+          await dbUpdate('jadwal_peserta', jadwal.id, { status_ujian: 'Selesai', draft_jawaban: null }, sekolahId);
+        } catch (upErr) {
+          const msg = String(upErr?.message || '');
+          if (msg.includes('draft_jawaban') || msg.includes('schema cache')) {
+            await dbUpdate('jadwal_peserta', jadwal.id, { status_ujian: 'Selesai' }, sekolahId);
+          } else {
+            throw upErr;
+          }
+        }
         jadwal.status_ujian = 'Selesai';
+        jadwal.draft_jawaban = null;
       }
 
       localStorage.removeItem(`cbt_draft_${siswaId}_${mapelId}`);
@@ -4707,10 +4870,23 @@ function proktorResetSesi(jadwalId, siswaId, mapelId) {
           if (siswaId) {
             await setStudentActiveSession(siswaId, null, target?.sekolah_id || null);
           }
-          await dbUpdate('jadwal_peserta', jadwalId, {
-            status_ujian: 'Belum Mulai',
-            pelanggaran: 0
-          }, target?.sekolah_id || null);
+          try {
+            await dbUpdate('jadwal_peserta', jadwalId, {
+              status_ujian: 'Belum Mulai',
+              pelanggaran: 0,
+              draft_jawaban: null
+            }, target?.sekolah_id || null);
+          } catch (upErr) {
+            const msg = String(upErr?.message || '');
+            if (msg.includes('draft_jawaban') || msg.includes('schema cache')) {
+              await dbUpdate('jadwal_peserta', jadwalId, {
+                status_ujian: 'Belum Mulai',
+                pelanggaran: 0
+              }, target?.sekolah_id || null);
+            } else {
+              throw upErr;
+            }
+          }
 
           if (IS_PREVIEW) {
             MOCK_DB.hasil_ujian = (MOCK_DB.hasil_ujian || []).filter(
@@ -4720,6 +4896,7 @@ function proktorResetSesi(jadwalId, siswaId, mapelId) {
             if (mRow) {
               mRow.status_ujian = 'Belum Mulai';
               mRow.pelanggaran = 0;
+              mRow.draft_jawaban = null;
             }
           } else if (sb) {
             await sb.from('hasil_ujian').delete().eq('siswa_id', siswaId).eq('mapel_id', mapelId);
@@ -4730,7 +4907,7 @@ function proktorResetSesi(jadwalId, siswaId, mapelId) {
           } catch (_) {}
 
           STATE.jadwalList = STATE.jadwalList.map(j =>
-            String(j.id) === String(jadwalId) ? { ...j, status_ujian: 'Belum Mulai', pelanggaran: 0 } : j
+            String(j.id) === String(jadwalId) ? { ...j, status_ujian: 'Belum Mulai', pelanggaran: 0, draft_jawaban: null } : j
           );
           STATE.hasilList = STATE.hasilList.filter(
             h => !(String(h.siswa_id) === String(siswaId) && String(h.mapel_id) === String(mapelId))
@@ -4836,13 +5013,16 @@ function tarikNilaiSesiBelumTerkirim() {
           for (const j of targets) {
             const soalListMapel = soalByMapel[String(j.mapel_id)] || [];
             let recoveredAnswers = {};
+            if (j.draft_jawaban && j.draft_jawaban.answers && typeof j.draft_jawaban.answers === 'object') {
+              recoveredAnswers = { ...j.draft_jawaban.answers };
+            }
             const draftKey = `cbt_draft_${j.siswa_id}_${j.mapel_id}`;
             try {
               const rawDraft = localStorage.getItem(draftKey);
               if (rawDraft) {
                 const parsed = JSON.parse(rawDraft);
                 if (parsed && parsed.answers && typeof parsed.answers === 'object') {
-                  recoveredAnswers = parsed.answers;
+                  recoveredAnswers = { ...recoveredAnswers, ...parsed.answers };
                 }
               }
             } catch (_) {}
@@ -5652,7 +5832,7 @@ function renderSiswaPortal() {
                 <span class="text-[11px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-md bg-slate-100 text-slate-600">
                   Tipe Soal: ${esc(q.jenis_soal)}
                 </span>
-                <span class="text-[11px] text-emerald-700 font-semibold">● Tersimpan Lokal</span>
+                <span class="text-[11px] text-emerald-700 font-semibold">● Auto-Sync Lokal &amp; Cloud</span>
               </div>
 
               <div class="text-slate-900 font-medium leading-relaxed mb-5 ${fontCls}">
@@ -7647,9 +7827,12 @@ CREATE TABLE IF NOT EXISTS public.jadwal_peserta (
     status_ujian TEXT NOT NULL DEFAULT 'Belum Mulai'
         CHECK (status_ujian IN ('Belum Mulai', 'Sedang Mengerjakan', 'Terkunci', 'Selesai')),
     pelanggaran INTEGER NOT NULL DEFAULT 0,
+    draft_jawaban JSONB DEFAULT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE (siswa_id, mapel_id)
 );
+
+ALTER TABLE public.jadwal_peserta ADD COLUMN IF NOT EXISTS draft_jawaban JSONB DEFAULT NULL;
 
 -- 8. STIMULUS / WACANA SOAL
 CREATE TABLE IF NOT EXISTS public.stimulus (
