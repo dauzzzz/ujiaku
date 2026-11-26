@@ -3892,7 +3892,15 @@ function handleImportSoalExcel(e) {
   reader.readAsArrayBuffer(file);
 }
 
-function exportSoalExcel() {
+async function exportSoalExcel() {
+  const ready = await ensureXlsxLoaded();
+  if (!ready) {
+    return notify("Library Excel (SheetJS) belum termuat. Periksa koneksi internet lalu coba lagi.", "error");
+  }
+  if (!STATE.soalList || STATE.soalList.length === 0) {
+    return notify("Belum ada butir soal pada paket ujian ini untuk diekspor.", "info");
+  }
+
   const rows = STATE.soalList.map(q => {
     const stim = q.stimulus_id ? STATE.stimulusList.find(st => st.id === q.stimulus_id) : null;
     let oA = '', oB = '', oC = '', oD = '', oE = '';
@@ -3922,10 +3930,37 @@ function exportSoalExcel() {
       KUNCI_JAWABAN: q.kunci_jawaban
     };
   });
+
+  const sanitizeFilenamePart = (val, maxLen = 45) =>
+    String(val || '')
+      .trim()
+      .replace(/[\\/:*?"<>|&]+/g, ' ')
+      .replace(/[^a-zA-Z0-9\s-]+/g, '')
+      .replace(/\s+/g, '_')
+      .replace(/_+/g, '_')
+      .replace(/^_|_$/g, '')
+      .slice(0, maxLen);
+
+  const activeMapel = STATE.mapelList.find(m => String(m.id) === String(STATE.selectedMapelId));
+  const kodePart = sanitizeFilenamePart(activeMapel?.kode_mapel, 20);
+  const namaPart = sanitizeFilenamePart(activeMapel?.nama_mapel, 45);
+  const kelasRaw = String(activeMapel?.kelas_target || '').trim();
+  const kelasPart = (kelasRaw && !namaPart.toLowerCase().includes(`kelas_${kelasRaw.toLowerCase()}`))
+    ? `Kelas_${sanitizeFilenamePart(kelasRaw, 15)}`
+    : '';
+  const datePart = getWIBNow().toISOString().slice(0, 10);
+  const fileParts = ['Bank_Soal', kodePart, namaPart, kelasPart, datePart].filter(Boolean);
+  const fileName = `${fileParts.join('_')}.xlsx`;
+
   const ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = [
+    { wch: 8 }, { wch: 12 }, { wch: 8 }, { wch: 24 }, { wch: 36 }, { wch: 24 },
+    { wch: 44 }, { wch: 30 }, { wch: 30 }, { wch: 20 }, { wch: 20 }, { wch: 16 }, { wch: 24 }
+  ];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Bank_Soal");
-  XLSX.writeFile(wb, `Bank_Soal_${STATE.selectedMapelId}.xlsx`);
+  XLSX.writeFile(wb, fileName);
+  notify(`Bank soal berhasil diekspor: ${fileName}`, "success");
 }
 
 function exportHasilExcel() {
