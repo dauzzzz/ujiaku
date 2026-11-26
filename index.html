@@ -3656,30 +3656,124 @@ function exportSesiExcel() {
   XLSX.writeFile(wb, "Data_Sesi_Ujian_CBT.xlsx");
 }
 
-function downloadTemplateSoal() {
+async function downloadTemplateSoal() {
+  const ready = await ensureXlsxLoaded();
+  if (!ready) {
+    return notify("Library Excel (SheetJS) belum termuat. Periksa koneksi internet lalu coba lagi.", "error");
+  }
   const rows = [
     {
-      NOMOR: 1, JENIS_SOAL: "PG", BOBOT: 2,
+      NOMOR: 1,
+      JENIS_SOAL: "PG",
+      BOBOT: 2,
       STIMULUS_JUDUL: "Menjaga Ekosistem Sungai",
-      STIMULUS_WACANA: "Sungai Bengawan Solo berperan penting sebagai sumber irigasi persawahan dan habitat ikan air tawar.",
+      STIMULUS_WACANA: "Sungai Bengawan Solo berperan penting sebagai sumber irigasi persawahan dan habitat ikan air tawar. Pembuangan plastik sekali pakai dapat menurunkan kadar oksigen air.",
       STIMULUS_GAMBAR_URL: "",
       PERTANYAAN: "Hasil dari $\\frac{1}{2} + \\frac{1}{4}$ adalah ....",
-      OPSI_A: "3/4", OPSI_B: "2/6", OPSI_C: "1/3", OPSI_D: "1/2", OPSI_E: "",
+      OPSI_A: "3/4",
+      OPSI_B: "2/6",
+      OPSI_C: "1/3",
+      OPSI_D: "1/2",
+      OPSI_E: "",
       KUNCI_JAWABAN: "A"
     },
     {
-      NOMOR: 2, JENIS_SOAL: "PGK", BOBOT: 3,
+      NOMOR: 2,
+      JENIS_SOAL: "PGK",
+      BOBOT: 3,
       STIMULUS_JUDUL: "",
       STIMULUS_WACANA: "",
       STIMULUS_GAMBAR_URL: "",
-      PERTANYAAN: "Pilih dua bilangan prima di bawah ini!",
-      OPSI_A: "2", OPSI_B: "4", OPSI_C: "7", OPSI_D: "9", OPSI_E: "",
+      PERTANYAAN: "Pilihlah DUA bilangan prima yang tepat di bawah ini!",
+      OPSI_A: "2",
+      OPSI_B: "4",
+      OPSI_C: "7",
+      OPSI_D: "9",
+      OPSI_E: "",
       KUNCI_JAWABAN: "A,C"
+    },
+    {
+      NOMOR: 3,
+      JENIS_SOAL: "BS",
+      BOBOT: 3,
+      STIMULUS_JUDUL: "Menjaga Ekosistem Sungai",
+      STIMULUS_WACANA: "",
+      STIMULUS_GAMBAR_URL: "",
+      PERTANYAAN: "Tentukan apakah setiap pernyataan berikut Benar atau Salah berdasarkan bacaan!",
+      OPSI_A: "Sungai Bengawan Solo bermanfaat untuk irigasi persawahan.|Pembuangan plastik meningkatkan kadar oksigen air.|Menjaga kebersihan sungai melindungi habitat ikan.",
+      OPSI_B: "",
+      OPSI_C: "",
+      OPSI_D: "",
+      OPSI_E: "",
+      KUNCI_JAWABAN: "B,S,B"
+    },
+    {
+      NOMOR: 4,
+      JENIS_SOAL: "MJ",
+      BOBOT: 3,
+      STIMULUS_JUDUL: "",
+      STIMULUS_WACANA: "",
+      STIMULUS_GAMBAR_URL: "",
+      PERTANYAAN: "Pasangkan istilah pelestarian lingkungan di sisi kiri dengan artinya yang tepat di sisi kanan!",
+      OPSI_A: "Irigasi|Pilah Sampah|Reboisasi",
+      OPSI_B: "Memisahkan sampah organik dan anorganik|Pengairan lahan pertanian|Penanaman kembali lahan gundul",
+      OPSI_C: "",
+      OPSI_D: "",
+      OPSI_E: "",
+      KUNCI_JAWABAN: "0:1,1:0,2:2"
+    },
+    {
+      NOMOR: 5,
+      JENIS_SOAL: "ISIAN",
+      BOBOT: 2,
+      STIMULUS_JUDUL: "",
+      STIMULUS_WACANA: "",
+      STIMULUS_GAMBAR_URL: "",
+      PERTANYAAN: "Siapakah Presiden pertama Republik Indonesia?",
+      OPSI_A: "",
+      OPSI_B: "",
+      OPSI_C: "",
+      OPSI_D: "",
+      OPSI_E: "",
+      KUNCI_JAWABAN: "Soekarno|Ir. Soekarno"
+    },
+    {
+      NOMOR: 6,
+      JENIS_SOAL: "URAIAN",
+      BOBOT: 4,
+      STIMULUS_JUDUL: "",
+      STIMULUS_WACANA: "",
+      STIMULUS_GAMBAR_URL: "",
+      PERTANYAAN: "Jelaskan dua dampak pembuangan sampah plastik ke sungai beserta cara pencegahannya!",
+      OPSI_A: "Pedoman: Skor 4 jika menyebutkan 2 dampak dan 2 pencegahan tepat; Skor 2 jika hanya menyebutkan salah satu.",
+      OPSI_B: "",
+      OPSI_C: "",
+      OPSI_D: "",
+      OPSI_E: "",
+      KUNCI_JAWABAN: "Menurunkan oksigen air dan merusak habitat ikan; dicegah dengan pilah sampah dan mengurangi plastik sekali pakai."
     }
   ];
+
+  const panduanRows = [
+    { JENIS_SOAL: "PG", KETERANGAN: "Pilihan Ganda (1 jawaban benar)", FORMAT_OPSI: "Isi OPSI_A s.d OPSI_D (OPSI_E opsional)", CONTOH_KUNCI: "A" },
+    { JENIS_SOAL: "PGK", KETERANGAN: "Pilihan Ganda Kompleks (>1 jawaban benar)", FORMAT_OPSI: "Isi OPSI_A s.d OPSI_D (OPSI_E opsional)", CONTOH_KUNCI: "A,C" },
+    { JENIS_SOAL: "BS", KETERANGAN: "Benar / Salah (multi pernyataan)", FORMAT_OPSI: "Isi OPSI_A dipisah tanda | untuk tiap pernyataan", CONTOH_KUNCI: "B,S,B" },
+    { JENIS_SOAL: "MJ", KETERANGAN: "Menjodohkan", FORMAT_OPSI: "OPSI_A = Premis kiri (pisah |), OPSI_B = Pasangan kanan (pisah |)", CONTOH_KUNCI: "0:1,1:0,2:2 (indeks mulai 0)" },
+    { JENIS_SOAL: "ISIAN", KETERANGAN: "Isian Singkat", FORMAT_OPSI: "Kosongkan kolom OPSI_A s.d OPSI_E", CONTOH_KUNCI: "Soekarno|Ir. Soekarno (pisah | untuk variasi)" },
+    { JENIS_SOAL: "URAIAN", KETERANGAN: "Uraian / Esai (koreksi manual guru)", FORMAT_OPSI: "OPSI_A = Pedoman penskoran guru", CONTOH_KUNCI: "Ringkasan jawaban ideal" }
+  ];
+
   const ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = [
+    { wch: 8 }, { wch: 12 }, { wch: 8 }, { wch: 24 }, { wch: 36 }, { wch: 24 },
+    { wch: 44 }, { wch: 34 }, { wch: 34 }, { wch: 16 }, { wch: 16 }, { wch: 14 }, { wch: 26 }
+  ];
+  const wsPanduan = XLSX.utils.json_to_sheet(panduanRows);
+  wsPanduan['!cols'] = [{ wch: 12 }, { wch: 36 }, { wch: 48 }, { wch: 36 }];
+
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Template_Soal_6_Tipe");
+  XLSX.utils.book_append_sheet(wb, wsPanduan, "Panduan_Format");
   XLSX.writeFile(wb, "Template_Bank_Soal_6_Tipe_Stimulus_CBT.xlsx");
 }
 
