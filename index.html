@@ -857,6 +857,8 @@ const STATE = {
   cardSingleSiswaId: '',
   cardShowQR: false,
   cardPaperSize: 'F4',
+  cardConfigModalOpen: false,
+  cardConfig: null,
 
   activeExamMapel: null,
   activeExamEndTimeMs: 0,
@@ -1380,6 +1382,67 @@ function renderRichText(rawHtml) {
     });
   }
   return `<div class="cbt-rich-content ql-editor">${html}</div>`;
+}
+
+function getDefaultCardConfig() {
+  return {
+    judulKartu: 'KARTU PESERTA UJIAN SEKOLAH / SUMATIF AKHIR SEMESTER (SAS)',
+    subKeterangan: 'PELAKSANAAN ASESMEN BERBASIS KOMPUTER (CBT)',
+    tahunPelajaran: '',
+    ruangOverride: '',
+    sesiOverride: '',
+    pinDefault: '',
+    showJadwal: true,
+    jadwalText: '',
+    tanggalTtd: '',
+    jabatanPejabat: 'Kepala Sekolah / Ketua Panitia,',
+    namaPejabat: '',
+    nipPejabat: 'NIP. ....................................'
+  };
+}
+
+function getCardConfig() {
+  if (!STATE.cardConfig) {
+    let saved = null;
+    try {
+      const raw = localStorage.getItem('cbt_card_config_v1');
+      if (raw) saved = JSON.parse(raw);
+    } catch (_) {}
+    STATE.cardConfig = { ...getDefaultCardConfig(), ...(saved && typeof saved === 'object' ? saved : {}) };
+  }
+  return STATE.cardConfig;
+}
+
+function saveCardConfigToStorage(cfg) {
+  STATE.cardConfig = { ...getDefaultCardConfig(), ...cfg };
+  try {
+    localStorage.setItem('cbt_card_config_v1', JSON.stringify(STATE.cardConfig));
+  } catch (_) {}
+}
+
+function buildAutoJadwalTextForCard() {
+  const sid = getEffectiveSchoolFilter();
+  const klsFilter = STATE.selectedKelasFilter;
+  const matched = (STATE.mapelList || []).filter(m => {
+    if (sid && sid !== 'ALL' && !isMapelForSchool(m, sid)) return false;
+    if (klsFilter && klsFilter !== 'Semua' && !isMapelForStudentClass(m, klsFilter)) return false;
+    return true;
+  }).sort((a, b) => {
+    const tA = String(a.tanggal_mulai || '9999-99-99');
+    const tB = String(b.tanggal_mulai || '9999-99-99');
+    if (tA !== tB) return tA.localeCompare(tB);
+    const jA = String(a.jam_mulai || '99:99');
+    const jB = String(b.jam_mulai || '99:99');
+    if (jA !== jB) return jA.localeCompare(jB);
+    return String(a.nama_mapel || '').localeCompare(String(b.nama_mapel || ''));
+  });
+
+  return matched.map(m => {
+    const tgl = formatTanggalSlash(m.tanggal_mulai || getWIBNow().toISOString().slice(0, 10));
+    const jm = String(m.jam_mulai || '07:30').slice(0, 5);
+    const js = String(m.jam_selesai || '09:30').slice(0, 5);
+    return `${tgl} | ${jm} - ${js} WIB | ${m.nama_mapel}`;
+  }).join('\n');
 }
 
 function onLogoFileUpload(e, targetSchoolId) {
@@ -5856,65 +5919,102 @@ function getFilteredCardStudents() {
 }
 
 function renderSingleOfficialCardHtml(siswa) {
+  const cfg = getCardConfig();
   const sek = getSekolahById(siswa.sekolah_id);
   const ruang = STATE.ruang.find(r => String(r.id) === String(siswa.ruang_id));
   const sesi = STATE.sesi.find(s => String(s.id) === String(siswa.sesi_id));
 
-  const ruangLabel = ruang
-    ? `${ruang.kode_ruang}${ruang.nama_ruang ? ` (${ruang.nama_ruang})` : ''}`
-    : '';
-  const sesiShort = sesi
-    ? (String(sesi.nama_sesi || '').replace(/\s*\([^)]*\)\s*/g, '').trim() || sesi.nama_sesi)
-    : '';
+  const ruangLabel = cfg.ruangOverride
+    ? cfg.ruangOverride
+    : (ruang ? `${ruang.kode_ruang}${ruang.nama_ruang ? ` (${ruang.nama_ruang})` : ''}` : '');
+  const sesiShort = cfg.sesiOverride
+    ? cfg.sesiOverride
+    : (sesi ? (String(sesi.nama_sesi || '').replace(/\s*\([^)]*\)\s*/g, '').trim() || sesi.nama_sesi) : '');
   const ruangSesiText = [ruangLabel, sesiShort].filter(Boolean).join(' • ') || '-';
 
-  // Gabungkan seluruh mapel yang sesuai sekolah & kelas siswa + jadwal_peserta agar lengkap pada setiap kartu
-  const mapelById = new Map();
-  (STATE.jadwalList || [])
-    .filter(j => String(j.siswa_id) === String(siswa.id))
-    .forEach(j => {
-      const m = STATE.mapelList.find(x => String(x.id) === String(j.mapel_id));
-      if (m) mapelById.set(String(m.id), m);
-    });
+  let scheduleRowsHtml = '';
+  const customJadwalLines = String(cfg.jadwalText || '')
+    .split('\n')
+    .map(l => l.trim())
+    .filter(Boolean);
 
-  (STATE.mapelList || []).forEach(m => {
-    const key = String(m.id);
-    if (mapelById.has(key)) return;
-    if (!isMapelForSchool(m, siswa.sekolah_id)) return;
-    if (!isMapelForStudentClass(m, siswa.kelas)) return;
-    mapelById.set(key, m);
-  });
-
-  const mapelListForCard = Array.from(mapelById.values()).sort((a, b) => {
-    const tA = String(a.tanggal_mulai || '9999-99-99');
-    const tB = String(b.tanggal_mulai || '9999-99-99');
-    if (tA !== tB) return tA.localeCompare(tB);
-    const jA = String(a.jam_mulai || '99:99');
-    const jB = String(b.jam_mulai || '99:99');
-    if (jA !== jB) return jA.localeCompare(jB);
-    return String(a.nama_mapel || '').localeCompare(String(b.nama_mapel || ''));
-  });
-
-  const fallbackMulai = sesi ? String(sesi.waktu_mulai || '07:30').slice(0, 5) : '07:30';
-  const fallbackSelesai = sesi ? String(sesi.waktu_selesai || '09:30').slice(0, 5) : '09:30';
-
-  const scheduleRowsHtml = mapelListForCard.length === 0
-    ? `<tr><td colspan="3" style="text-align:center;color:#64748B;">Belum ada mata pelajaran terjadwal.</td></tr>`
-    : mapelListForCard.map(m => {
-        const jamM = String(m.jam_mulai || fallbackMulai).slice(0, 5);
-        const jamS = String(m.jam_selesai || fallbackSelesai).slice(0, 5);
+  if (cfg.showJadwal !== false) {
+    if (customJadwalLines.length > 0) {
+      scheduleRowsHtml = customJadwalLines.map(line => {
+        const parts = line.split('|').map(x => x.trim());
+        const tgl = parts.length >= 3 ? parts[0] : (parts.length === 2 ? parts[0] : '-');
+        const waktu = parts.length >= 3 ? parts[1] : '-';
+        const mapelNama = parts.length >= 3 ? parts.slice(2).join(' | ') : (parts.length === 2 ? parts[1] : parts[0]);
         return `
           <tr>
-            <td style="white-space:nowrap;">${esc(formatTanggalSlash(m.tanggal_mulai || sek.tanggal_ujian))}</td>
-            <td style="white-space:nowrap;">${esc(jamM)} - ${esc(jamS)} WIB</td>
-            <td style="font-weight:700;">${esc(m.nama_mapel)}</td>
+            <td style="white-space:nowrap;">${esc(tgl)}</td>
+            <td style="white-space:nowrap;">${esc(waktu)}</td>
+            <td style="font-weight:700;">${esc(mapelNama)}</td>
           </tr>
         `;
       }).join('');
+    } else {
+      // Gabungkan seluruh mapel yang sesuai sekolah & kelas siswa + jadwal_peserta agar lengkap pada setiap kartu
+      const mapelById = new Map();
+      (STATE.jadwalList || [])
+        .filter(j => String(j.siswa_id) === String(siswa.id))
+        .forEach(j => {
+          const m = STATE.mapelList.find(x => String(x.id) === String(j.mapel_id));
+          if (m) mapelById.set(String(m.id), m);
+        });
+
+      (STATE.mapelList || []).forEach(m => {
+        const key = String(m.id);
+        if (mapelById.has(key)) return;
+        if (!isMapelForSchool(m, siswa.sekolah_id)) return;
+        if (!isMapelForStudentClass(m, siswa.kelas)) return;
+        mapelById.set(key, m);
+      });
+
+      const mapelListForCard = Array.from(mapelById.values()).sort((a, b) => {
+        const tA = String(a.tanggal_mulai || '9999-99-99');
+        const tB = String(b.tanggal_mulai || '9999-99-99');
+        if (tA !== tB) return tA.localeCompare(tB);
+        const jA = String(a.jam_mulai || '99:99');
+        const jB = String(b.jam_mulai || '99:99');
+        if (jA !== jB) return jA.localeCompare(jB);
+        return String(a.nama_mapel || '').localeCompare(String(b.nama_mapel || ''));
+      });
+
+      const fallbackMulai = sesi ? String(sesi.waktu_mulai || '07:30').slice(0, 5) : '07:30';
+      const fallbackSelesai = sesi ? String(sesi.waktu_selesai || '09:30').slice(0, 5) : '09:30';
+
+      scheduleRowsHtml = mapelListForCard.length === 0
+        ? `<tr><td colspan="3" style="text-align:center;color:#64748B;">Belum ada mata pelajaran terjadwal.</td></tr>`
+        : mapelListForCard.map(m => {
+            const jamM = String(m.jam_mulai || fallbackMulai).slice(0, 5);
+            const jamS = String(m.jam_selesai || fallbackSelesai).slice(0, 5);
+            return `
+              <tr>
+                <td style="white-space:nowrap;">${esc(formatTanggalSlash(m.tanggal_mulai || sek.tanggal_ujian))}</td>
+                <td style="white-space:nowrap;">${esc(jamM)} - ${esc(jamS)} WIB</td>
+                <td style="font-weight:700;">${esc(m.nama_mapel)}</td>
+              </tr>
+            `;
+          }).join('');
+    }
+  }
 
   const logoSrc = sek.logo_url || getAppBranding().logo_url || DEFAULT_SHIELD_SVG;
-  const signDateText = formatTanggalIndo(sek.tanggal_ujian || getWIBNow().toISOString().slice(0, 10));
+  const defaultSignDate = formatTanggalIndo(sek.tanggal_ujian || getWIBNow().toISOString().slice(0, 10));
+  const signDateText = cfg.tanggalTtd || defaultSignDate;
   const tahunNow = Number(String(sek.tanggal_ujian || getWIBNow().toISOString().slice(0, 10)).slice(0, 4)) || 2026;
+  const judulKartuText = cfg.judulKartu || 'KARTU PESERTA UJIAN SEKOLAH / SUMATIF AKHIR SEMESTER (SAS)';
+  const subKetText = cfg.subKeterangan || 'PELAKSANAAN ASESMEN BERBASIS KOMPUTER (CBT)';
+  const tahunLineText = cfg.tahunPelajaran
+    ? `${cfg.tahunPelajaran} • NPSN: ${sek.npsn}`
+    : `Tahun Pelajaran ${tahunNow}/${tahunNow + 1} • NPSN: ${sek.npsn}`;
+  const pinValue = siswa.password || cfg.pinDefault || '-';
+  const jabatanText = cfg.jabatanPejabat || 'Kepala Sekolah / Ketua Panitia,';
+  const namaPejabatText = String(cfg.namaPejabat || '').trim();
+  const nipText = cfg.nipPejabat !== undefined && String(cfg.nipPejabat).trim() !== ''
+    ? cfg.nipPejabat
+    : 'NIP. ....................................';
   const qrPayload = encodeURIComponent(`CBT|${sek.npsn}|${siswa.username}|${siswa.nama_lengkap}`);
 
   return `
@@ -5925,9 +6025,9 @@ function renderSingleOfficialCardHtml(siswa) {
         </div>
         <div class="cbt-card-title-wrap">
           <div class="cbt-card-school">${esc(sek.nama_sekolah)}</div>
-          <div class="cbt-card-subtitle">KARTU PESERTA UJIAN SEKOLAH / SUMATIF AKHIR SEMESTER (SAS)</div>
-          <div class="cbt-card-mode">PELAKSANAAN ASESMEN BERBASIS KOMPUTER (CBT)</div>
-          <div class="cbt-card-year">Tahun Pelajaran ${tahunNow}/${tahunNow + 1} • NPSN: ${esc(sek.npsn)}</div>
+          <div class="cbt-card-subtitle">${esc(judulKartuText)}</div>
+          <div class="cbt-card-mode">${esc(subKetText)}</div>
+          <div class="cbt-card-year">${esc(tahunLineText)}</div>
         </div>
       </div>
 
@@ -5956,21 +6056,23 @@ function renderSingleOfficialCardHtml(siswa) {
 
       <div class="cbt-card-cred">
         <span>Username: <strong style="font-family:monospace;">${esc(siswa.username)}</strong></span>
-        <span>PIN: <strong style="font-family:monospace;color:#1D4ED8;">${esc(siswa.password)}</strong></span>
+        <span>PIN: <strong style="font-family:monospace;color:#1D4ED8;">${esc(pinValue)}</strong></span>
       </div>
 
-      <table class="cbt-card-table">
-        <thead>
-          <tr>
-            <th style="width:24%;">Tanggal</th>
-            <th style="width:30%;">Waktu (WIB)</th>
-            <th>Mata Pelajaran</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${scheduleRowsHtml}
-        </tbody>
-      </table>
+      ${cfg.showJadwal !== false ? `
+        <table class="cbt-card-table">
+          <thead>
+            <tr>
+              <th style="width:24%;">Tanggal</th>
+              <th style="width:30%;">Waktu (WIB)</th>
+              <th>Mata Pelajaran</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${scheduleRowsHtml}
+          </tbody>
+        </table>
+      ` : ''}
 
       <div class="cbt-card-footer">
         <div style="display:flex;align-items:flex-end;gap:8px;">
@@ -5988,9 +6090,11 @@ function renderSingleOfficialCardHtml(siswa) {
         </div>
         <div class="cbt-sign-box">
           <div>${esc(signDateText)}</div>
-          <div>Kepala Sekolah / Ketua Panitia,</div>
-          <div class="cbt-sign-line"></div>
-          <div style="font-size:9px;color:#475569;">NIP. ....................................</div>
+          <div>${esc(jabatanText)}</div>
+          ${namaPejabatText
+            ? `<div style="margin-top:32px;font-weight:800;text-decoration:underline;">${esc(namaPejabatText)}</div>`
+            : `<div class="cbt-sign-line"></div>`}
+          <div style="font-size:9px;color:#475569;margin-top:2px;">${esc(nipText)}</div>
         </div>
       </div>
     </div>
@@ -8410,6 +8514,9 @@ function renderCetakKartuSection() {
         </div>
 
         <div class="flex flex-wrap items-center gap-2">
+          <button type="button" onclick="CBT.openCardConfigModal()" class="px-3.5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-extrabold shadow">
+            ✏️ Edit Kop &amp; Mapel
+          </button>
           <button type="button" onclick="CBT.printKartuF4()" class="px-4 py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-extrabold shadow">
             🖨 Cetak Kartu ${esc(STATE.cardPaperSize)} (${list.length} Kartu)
           </button>
@@ -8870,6 +8977,154 @@ function renderMapelModal() {
   `;
 }
 
+function renderCardConfigModal() {
+  if (!STATE.cardConfigModalOpen) return '';
+  const cfg = getCardConfig();
+  const scopedCount = getFilteredCardStudents().length;
+  const sek = getSekolahById(STATE.activeSekolahId);
+  const tahunNow = Number(String(sek.tanggal_ujian || getWIBNow().toISOString().slice(0, 10)).slice(0, 4)) || 2026;
+  const defaultTahun = `Tahun Pelajaran ${tahunNow}/${tahunNow + 1}`;
+  const defaultTglTtd = formatTanggalIndo(sek.tanggal_ujian || getWIBNow().toISOString().slice(0, 10));
+  const jadwalDisplay = cfg.jadwalText || buildAutoJadwalTextForCard();
+
+  return `
+    <div class="no-print fixed inset-0 bg-slate-900/60 z-[999998] flex items-center justify-center p-3 sm:p-4 overflow-y-auto"
+      onclick="if(event.target===this) CBT.closeCardConfigModal()">
+      <div class="bg-white rounded-3xl max-w-2xl w-full shadow-2xl border border-slate-200 overflow-hidden my-auto">
+        <div class="pusdatin-header px-5 py-4 flex items-center justify-between text-white">
+          <div class="flex items-center gap-2">
+            <span class="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center text-xs font-extrabold">🪪</span>
+            <h3 class="text-sm sm:text-base font-extrabold">Pengaturan Kop &amp; Jadwal Kartu Peserta (${scopedCount} Kartu)</h3>
+          </div>
+          <button type="button" onclick="CBT.closeCardConfigModal()" class="text-white/90 hover:text-white font-extrabold text-lg leading-none px-1">✕</button>
+        </div>
+
+        <form id="form-card-config" onsubmit="CBT.saveCardConfig(event, false)" class="p-5 space-y-3.5 text-xs max-h-[82vh] overflow-y-auto">
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">Judul Kartu Ujian *</label>
+            <input name="judulKartu" required value="${esc(cfg.judulKartu)}"
+              placeholder="KARTU PESERTA UJIAN SEKOLAH / SUMATIF AKHIR SEMESTER (SAS)"
+              class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white focus:ring-2 focus:ring-blue-600 outline-none font-bold uppercase" />
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block font-bold text-slate-700 mb-1">Sub-Keterangan</label>
+              <input name="subKeterangan" value="${esc(cfg.subKeterangan)}"
+                placeholder="PELAKSANAAN ASESMEN BERBASIS KOMPUTER (CBT)"
+                class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white focus:ring-2 focus:ring-blue-600 outline-none font-semibold" />
+            </div>
+            <div>
+              <label class="block font-bold text-slate-700 mb-1">Tahun Pelajaran &amp; Semester</label>
+              <input name="tahunPelajaran" value="${esc(cfg.tahunPelajaran)}"
+                placeholder="${esc(defaultTahun)} • Semester Ganjil"
+                class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white focus:ring-2 focus:ring-blue-600 outline-none font-semibold" />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label class="block font-bold text-slate-700 mb-1">Ruang Ujian (Opsional)</label>
+              <input name="ruangOverride" value="${esc(cfg.ruangOverride)}"
+                placeholder="Kosong = ikuti data siswa"
+                class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-semibold" />
+            </div>
+            <div>
+              <label class="block font-bold text-slate-700 mb-1">Sesi / Waktu (Opsional)</label>
+              <input name="sesiOverride" value="${esc(cfg.sesiOverride)}"
+                placeholder="Kosong = ikuti data siswa"
+                class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-semibold" />
+            </div>
+            <div>
+              <label class="block font-bold text-slate-700 mb-1">PIN Default (Jika Kosong)</label>
+              <input name="pinDefault" value="${esc(cfg.pinDefault)}"
+                placeholder="Kosong = PIN tiap siswa"
+                class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-mono font-bold text-emerald-700" />
+            </div>
+          </div>
+
+          <div class="space-y-1.5 pt-1">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <label class="flex items-center gap-2 font-extrabold text-slate-800 cursor-pointer">
+                <input type="checkbox" name="showJadwal" ${cfg.showJadwal !== false ? 'checked' : ''}
+                  onchange="CBT.onCardShowJadwalToggle(this.checked)"
+                  class="w-4 h-4 accent-blue-700 cursor-pointer" />
+                <span>Tampilkan Jadwal Mata Pelajaran di Kartu</span>
+              </label>
+              <button type="button" onclick="CBT.fillCardJadwalFromMapel()"
+                class="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold text-[11px] transition">
+                📅 Ambil dari Jadwal Ujian
+              </button>
+            </div>
+            <div id="card-jadwal-textarea-wrap" class="${cfg.showJadwal !== false ? '' : 'hidden'} space-y-1">
+              <textarea id="card-jadwal-textarea" name="jadwalText" rows="4"
+                placeholder="Format 1 baris per mapel: Tanggal | Waktu (WIB) | Mata Pelajaran&#10;Contoh: 26/11/2026 | 07:30 - 09:30 WIB | Bahasa Indonesia"
+                class="w-full p-3 rounded-xl border border-slate-300 bg-white font-mono text-[11px] leading-relaxed focus:ring-2 focus:ring-blue-600 outline-none">${esc(jadwalDisplay)}</textarea>
+              <p class="text-[11px] text-slate-500">Format: <code>Tanggal | Waktu (WIB) | Mata Pelajaran</code> (1 baris per mata pelajaran). Kosongkan untuk otomatis mengikuti jadwal tiap siswa.</p>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-4 gap-2.5 pt-1">
+            <div>
+              <label class="block font-bold text-slate-700 mb-1">Kertas</label>
+              <select name="paperSize" class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-bold">
+                <option value="F4" ${STATE.cardPaperSize==='F4'?'selected':''}>F4 / Folio</option>
+                <option value="A4" ${STATE.cardPaperSize==='A4'?'selected':''}>A4</option>
+              </select>
+            </div>
+            <div>
+              <label class="block font-bold text-slate-700 mb-1">Tanggal TTD</label>
+              <input name="tanggalTtd" value="${esc(cfg.tanggalTtd)}"
+                placeholder="${esc(defaultTglTtd)}"
+                class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-semibold" />
+            </div>
+            <div>
+              <label class="block font-bold text-slate-700 mb-1">Nama Pejabat</label>
+              <input name="namaPejabat" value="${esc(cfg.namaPejabat)}"
+                placeholder="Kosong = garis TTD"
+                class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-semibold" />
+            </div>
+            <div>
+              <label class="block font-bold text-slate-700 mb-1">NIP</label>
+              <input name="nipPejabat" value="${esc(cfg.nipPejabat)}"
+                placeholder="NIP. ........................"
+                class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-semibold" />
+            </div>
+          </div>
+
+          <div>
+            <label class="block font-bold text-slate-700 mb-1">Jabatan Penandatangan</label>
+            <input name="jabatanPejabat" value="${esc(cfg.jabatanPejabat)}"
+              placeholder="Kepala Sekolah / Ketua Panitia,"
+              class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-semibold" />
+          </div>
+
+          <div class="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-slate-200">
+            <button type="button" onclick="CBT.resetCardConfig()"
+              class="px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold">
+              ↺ Reset Default
+            </button>
+            <div class="flex flex-wrap gap-2">
+              <button type="button" onclick="CBT.closeCardConfigModal()"
+                class="px-4 py-2.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-bold">
+                Batal
+              </button>
+              <button type="submit"
+                class="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold shadow">
+                Simpan Pengaturan
+              </button>
+              <button type="button" onclick="CBT.saveCardConfig(null, true)"
+                class="px-4 py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white font-extrabold shadow">
+                🖨 Simpan &amp; Cetak Kartu
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+}
+
 function initQuillPertanyaanEditor() {
   const container = document.getElementById('quill-pertanyaan-editor');
   const toolbar = document.getElementById('quill-toolbar-pertanyaan');
@@ -8937,6 +9192,7 @@ function render() {
   else if (STATE.role === 'admin') html = renderAdminPortal();
 
   html += renderMapelModal();
+  html += renderCardConfigModal();
   html += renderConfirmModal();
   html += renderInfoModal();
 
@@ -9400,6 +9656,59 @@ window.CBT = {
   setCardSingleSiswa: (sid) => { STATE.cardSingleSiswaId = sid; render(); },
   setCardPaperSize: (sz) => { STATE.cardPaperSize = sz; render(); },
   toggleCardQR: (show) => { STATE.cardShowQR = show; render(); },
+  openCardConfigModal: () => {
+    getCardConfig();
+    STATE.cardConfigModalOpen = true;
+    render();
+  },
+  closeCardConfigModal: () => {
+    STATE.cardConfigModalOpen = false;
+    render();
+  },
+  onCardShowJadwalToggle: (checked) => {
+    const wrap = document.getElementById('card-jadwal-textarea-wrap');
+    if (wrap) wrap.classList.toggle('hidden', !checked);
+  },
+  fillCardJadwalFromMapel: () => {
+    const ta = document.getElementById('card-jadwal-textarea');
+    const autoText = buildAutoJadwalTextForCard();
+    if (ta) ta.value = autoText;
+    notify(autoText ? "Daftar mata pelajaran berhasil diambil dari Jadwal Ujian." : "Belum ada jadwal ujian pada filter sekolah/kelas ini.", autoText ? "success" : "info");
+  },
+  saveCardConfig: (e, shouldPrint = false) => {
+    if (e) e.preventDefault();
+    const form = e?.target || document.getElementById('form-card-config');
+    if (!form) return;
+    const fd = new FormData(form);
+    const paper = fd.get('paperSize');
+    if (paper === 'F4' || paper === 'A4') STATE.cardPaperSize = paper;
+    saveCardConfigToStorage({
+      judulKartu: String(fd.get('judulKartu') || '').trim(),
+      subKeterangan: String(fd.get('subKeterangan') || '').trim(),
+      tahunPelajaran: String(fd.get('tahunPelajaran') || '').trim(),
+      ruangOverride: String(fd.get('ruangOverride') || '').trim(),
+      sesiOverride: String(fd.get('sesiOverride') || '').trim(),
+      pinDefault: String(fd.get('pinDefault') || '').trim(),
+      showJadwal: fd.get('showJadwal') === 'on',
+      jadwalText: String(fd.get('jadwalText') || '').trim(),
+      tanggalTtd: String(fd.get('tanggalTtd') || '').trim(),
+      jabatanPejabat: String(fd.get('jabatanPejabat') || '').trim(),
+      namaPejabat: String(fd.get('namaPejabat') || '').trim(),
+      nipPejabat: String(fd.get('nipPejabat') || '').trim()
+    });
+    STATE.cardConfigModalOpen = false;
+    render();
+    notify("Pengaturan kop & jadwal kartu berhasil diterapkan.", "success");
+    if (shouldPrint) {
+      setTimeout(() => printKartuF4(), 120);
+    }
+  },
+  resetCardConfig: () => {
+    STATE.cardConfig = getDefaultCardConfig();
+    try { localStorage.removeItem('cbt_card_config_v1'); } catch (_) {}
+    render();
+    notify("Kop & jadwal kartu dikembalikan ke pengaturan default otomatis.", "info");
+  },
   printKartuF4,
   downloadKartuF4Html,
   printRekapF4,
