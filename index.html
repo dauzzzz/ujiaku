@@ -8158,10 +8158,44 @@ function renderBankSoalSection(isPenelaah = false) {
 }
 
 function buildBankSoalPreviewHtml(q, stim = null, isLiveDraft = false, fallbackNomor = 1) {
+  const totalSoal = (STATE.soalList || []).length;
+  const curIdx = q?.id ? STATE.soalList.findIndex(item => String(item.id) === String(q.id)) : -1;
+  const prevSoalObj = curIdx > 0
+    ? STATE.soalList[curIdx - 1]
+    : (curIdx === -1 && totalSoal > 0 ? STATE.soalList[totalSoal - 1] : null);
+  const nextSoalObj = (curIdx >= 0 && curIdx < totalSoal - 1)
+    ? STATE.soalList[curIdx + 1]
+    : null;
+
+  const navFooterHtml = totalSoal > 0 ? `
+    <div class="pt-3 mt-3 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2">
+      <button type="button" onclick="CBT.navigateBankSoal('prev')" ${!prevSoalObj ? 'disabled' : ''}
+        class="px-3 py-1.5 rounded-lg border text-xs font-bold flex items-center gap-1.5 transition ${prevSoalObj
+          ? 'bg-slate-50 hover:bg-blue-50 text-blue-800 border-slate-300 cursor-pointer'
+          : 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'}">
+        <span>←</span>
+        <span>${prevSoalObj ? `Soal No. ${prevSoalObj.nomor_urut}` : 'Sebelumnya'}</span>
+      </button>
+
+      <span class="text-[11px] font-bold text-slate-500">
+        ${curIdx >= 0 ? `Soal ${curIdx + 1} dari ${totalSoal}` : `Soal Baru (Total ${totalSoal} tersimpan)`}
+      </span>
+
+      <button type="button" onclick="CBT.navigateBankSoal('next')" ${!nextSoalObj ? 'disabled' : ''}
+        class="px-3 py-1.5 rounded-lg border text-xs font-bold flex items-center gap-1.5 transition ${nextSoalObj
+          ? 'bg-blue-700 hover:bg-blue-800 text-white border-blue-700 shadow-xs cursor-pointer'
+          : 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'}">
+        <span>${nextSoalObj ? `Soal No. ${nextSoalObj.nomor_urut}` : 'Berikutnya'}</span>
+        <span>→</span>
+      </button>
+    </div>
+  ` : '';
+
   if (!q) {
     return `
       <div class="p-4 rounded-xl border border-dashed border-slate-300 bg-slate-50/80 text-center text-xs text-slate-500">
-        Mode input <strong>Soal Nomor ${fallbackNomor}</strong> belum tersimpan. Ketik pada form di atas untuk melihat pratinjau langsung, lalu klik <strong>Simpan Soal Baru</strong>.
+        <div>Mode input <strong>Soal Nomor ${fallbackNomor}</strong> belum tersimpan. Ketik pada form di atas untuk melihat pratinjau langsung, lalu klik <strong>Simpan Soal Baru</strong>.</div>
+        ${navFooterHtml}
       </div>
     `;
   }
@@ -8246,6 +8280,7 @@ function buildBankSoalPreviewHtml(q, stim = null, isLiveDraft = false, fallbackN
 
       <div class="text-slate-900 font-semibold">${q.pertanyaan ? renderRichText(q.pertanyaan) : '<span class="text-slate-400 italic">(Teks pertanyaan belum diisi)</span>'}</div>
       ${detailOpsiHtml}
+      ${navFooterHtml}
     </div>
   `;
 }
@@ -9319,6 +9354,28 @@ window.CBT = {
     STATE.formStimulusId = undefined;
     render();
     document.getElementById('form-bank-soal')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  },
+  navigateBankSoal: (direction) => {
+    const list = STATE.soalList || [];
+    if (!list.length) return;
+    const curIdx = STATE.editSoalId
+      ? list.findIndex(item => String(item.id) === String(STATE.editSoalId))
+      : -1;
+
+    let target = null;
+    if (direction === 'prev') {
+      if (curIdx > 0) target = list[curIdx - 1];
+      else if (curIdx === -1) target = list[list.length - 1];
+    } else if (direction === 'next') {
+      if (curIdx >= 0 && curIdx < list.length - 1) target = list[curIdx + 1];
+    }
+
+    if (!target) return;
+    STATE.editSoalId = target.id;
+    STATE.newSoalNomor = null;
+    STATE.formStimulusId = undefined;
+    render();
+    document.getElementById('bank-soal-live-preview')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   },
   insertKatexFraction,
   downloadTemplateSoal,
