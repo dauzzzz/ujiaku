@@ -1,28 +1,27 @@
 <!DOCTYPE html>
-<html lang="id">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
-  <meta name="theme-color" content="#1D4ED8" />
+<html lang="id"><head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <meta name="theme-color" content="#1D4ED8">
   <title>CBT PUSDATIN - Multi-Sekolah | alfian tech</title>
 
   <!-- PWA Manifest Embedded via Data URI (Single-File PWA) -->
-  <link rel="manifest" href="data:application/manifest+json;charset=utf-8,%7B%22name%22%3A%22CBT%20PUSDATIN%20Multi-Sekolah%22%2C%22short_name%22%3A%22CBT%20Pusdatin%22%2C%22start_url%22%3A%22.%2F%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23F8FAFC%22%2C%22theme_color%22%3A%22%231D4ED8%22%2C%22description%22%3A%22Aplikasi%20Computer-Based%20Test%20Standar%20Pusdatin%20Multi-Sekolah%22%7D" />
+  <link rel="manifest" href="data:application/manifest+json;charset=utf-8,%7B%22name%22%3A%22CBT%20PUSDATIN%20Multi-Sekolah%22%2C%22short_name%22%3A%22CBT%20Pusdatin%22%2C%22start_url%22%3A%22.%2F%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23F8FAFC%22%2C%22theme_color%22%3A%22%231D4ED8%22%2C%22description%22%3A%22Aplikasi%20Computer-Based%20Test%20Standar%20Pusdatin%20Multi-Sekolah%22%7D">
 
   <!-- Tailwind CSS CDN & SheetJS (.xlsx) -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" crossorigin="anonymous"></script>
 
   <!-- KaTeX & Quill.js Rich Text Editor -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
-  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.snow.css" />
-  <script src="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js" crossorigin="anonymous"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.snow.css">
+  <script src="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.min.js" crossorigin="anonymous"></script>
 
   <!-- Google Fonts: Plus Jakarta Sans & Inter -->
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Plus+Jakarta+Sans:wght@600;700;800&amp;display=swap" rel="stylesheet">
 
   <style>
     /* =========================================================================
@@ -299,11 +298,376 @@
       }
     }
   </style>
-</head>
+<style>*, ::before, ::after{--tw-border-spacing-x:0;--tw-border-spacing-y:0;--tw-translate-x:0;--tw-translate-y:0;--tw-rotate:0;--tw-skew-x:0;--tw-skew-y:0;--tw-scale-x:1;--tw-scale-y:1;--tw-pan-x: ;--tw-pan-y: ;--tw-pinch-zoom: ;--tw-scroll-snap-strictness:proximity;--tw-gradient-from-position: ;--tw-gradient-via-position: ;--tw-gradient-to-position: ;--tw-ordinal: ;--tw-slashed-zero: ;--tw-numeric-figure: ;--tw-numeric-spacing: ;--tw-numeric-fraction: ;--tw-ring-inset: ;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-color:rgb(59 130 246 / 0.5);--tw-ring-offset-shadow:0 0 #0000;--tw-ring-shadow:0 0 #0000;--tw-shadow:0 0 #0000;--tw-shadow-colored:0 0 #0000;--tw-blur: ;--tw-brightness: ;--tw-contrast: ;--tw-grayscale: ;--tw-hue-rotate: ;--tw-invert: ;--tw-saturate: ;--tw-sepia: ;--tw-drop-shadow: ;--tw-backdrop-blur: ;--tw-backdrop-brightness: ;--tw-backdrop-contrast: ;--tw-backdrop-grayscale: ;--tw-backdrop-hue-rotate: ;--tw-backdrop-invert: ;--tw-backdrop-opacity: ;--tw-backdrop-saturate: ;--tw-backdrop-sepia: ;--tw-contain-size: ;--tw-contain-layout: ;--tw-contain-paint: ;--tw-contain-style: }::backdrop{--tw-border-spacing-x:0;--tw-border-spacing-y:0;--tw-translate-x:0;--tw-translate-y:0;--tw-rotate:0;--tw-skew-x:0;--tw-skew-y:0;--tw-scale-x:1;--tw-scale-y:1;--tw-pan-x: ;--tw-pan-y: ;--tw-pinch-zoom: ;--tw-scroll-snap-strictness:proximity;--tw-gradient-from-position: ;--tw-gradient-via-position: ;--tw-gradient-to-position: ;--tw-ordinal: ;--tw-slashed-zero: ;--tw-numeric-figure: ;--tw-numeric-spacing: ;--tw-numeric-fraction: ;--tw-ring-inset: ;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-color:rgb(59 130 246 / 0.5);--tw-ring-offset-shadow:0 0 #0000;--tw-ring-shadow:0 0 #0000;--tw-shadow:0 0 #0000;--tw-shadow-colored:0 0 #0000;--tw-blur: ;--tw-brightness: ;--tw-contrast: ;--tw-grayscale: ;--tw-hue-rotate: ;--tw-invert: ;--tw-saturate: ;--tw-sepia: ;--tw-drop-shadow: ;--tw-backdrop-blur: ;--tw-backdrop-brightness: ;--tw-backdrop-contrast: ;--tw-backdrop-grayscale: ;--tw-backdrop-hue-rotate: ;--tw-backdrop-invert: ;--tw-backdrop-opacity: ;--tw-backdrop-saturate: ;--tw-backdrop-sepia: ;--tw-contain-size: ;--tw-contain-layout: ;--tw-contain-paint: ;--tw-contain-style: }/* ! tailwindcss v3.4.17 | MIT License | https://tailwindcss.com */*,::after,::before{box-sizing:border-box;border-width:0;border-style:solid;border-color:#e5e7eb}::after,::before{--tw-content:''}:host,html{line-height:1.5;-webkit-text-size-adjust:100%;-moz-tab-size:4;tab-size:4;font-family:ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";font-feature-settings:normal;font-variation-settings:normal;-webkit-tap-highlight-color:transparent}body{margin:0;line-height:inherit}hr{height:0;color:inherit;border-top-width:1px}abbr:where([title]){-webkit-text-decoration:underline dotted;text-decoration:underline dotted}h1,h2,h3,h4,h5,h6{font-size:inherit;font-weight:inherit}a{color:inherit;text-decoration:inherit}b,strong{font-weight:bolder}code,kbd,pre,samp{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;font-feature-settings:normal;font-variation-settings:normal;font-size:1em}small{font-size:80%}sub,sup{font-size:75%;line-height:0;position:relative;vertical-align:baseline}sub{bottom:-.25em}sup{top:-.5em}table{text-indent:0;border-color:inherit;border-collapse:collapse}button,input,optgroup,select,textarea{font-family:inherit;font-feature-settings:inherit;font-variation-settings:inherit;font-size:100%;font-weight:inherit;line-height:inherit;letter-spacing:inherit;color:inherit;margin:0;padding:0}button,select{text-transform:none}button,input:where([type=button]),input:where([type=reset]),input:where([type=submit]){-webkit-appearance:button;background-color:transparent;background-image:none}:-moz-focusring{outline:auto}:-moz-ui-invalid{box-shadow:none}progress{vertical-align:baseline}::-webkit-inner-spin-button,::-webkit-outer-spin-button{height:auto}[type=search]{-webkit-appearance:textfield;outline-offset:-2px}::-webkit-search-decoration{-webkit-appearance:none}::-webkit-file-upload-button{-webkit-appearance:button;font:inherit}summary{display:list-item}blockquote,dd,dl,figure,h1,h2,h3,h4,h5,h6,hr,p,pre{margin:0}fieldset{margin:0;padding:0}legend{padding:0}menu,ol,ul{list-style:none;margin:0;padding:0}dialog{padding:0}textarea{resize:vertical}input::placeholder,textarea::placeholder{opacity:1;color:#9ca3af}[role=button],button{cursor:pointer}:disabled{cursor:default}audio,canvas,embed,iframe,img,object,svg,video{display:block;vertical-align:middle}img,video{max-width:100%;height:auto}[hidden]:where(:not([hidden=until-found])){display:none}.pointer-events-none{pointer-events:none}.fixed{position:fixed}.absolute{position:absolute}.relative{position:relative}.sticky{position:sticky}.right-4{right:1rem}.top-20{top:5rem}.right-2\.5{right:0.625rem}.top-0{top:0px}.top-1\/2{top:50%}.bottom-3{bottom:0.75rem}.left-3{left:0.75rem}.right-3{right:0.75rem}.z-\[999999\]{z-index:999999}.z-40{z-index:40}.mx-auto{margin-left:auto;margin-right:auto}.mb-1{margin-bottom:0.25rem}.mb-2\.5{margin-bottom:0.625rem}.mt-1{margin-top:0.25rem}.mb-3{margin-bottom:0.75rem}.mt-3{margin-top:0.75rem}.ml-1{margin-left:0.25rem}.mt-2{margin-top:0.5rem}.mt-4{margin-top:1rem}.block{display:block}.inline-block{display:inline-block}.flex{display:flex}.grid{display:grid}.hidden{display:none}.h-16{height:4rem}.h-9{height:2.25rem}.h-full{height:100%}.h-14{height:3.5rem}.min-h-screen{min-height:100vh}.w-16{width:4rem}.w-9{width:2.25rem}.w-full{width:100%}.w-14{width:3.5rem}.w-24{width:6rem}.w-20{width:5rem}.min-w-0{min-width:0px}.max-w-7xl{max-width:80rem}.max-w-md{max-width:28rem}.max-w-6xl{max-width:72rem}.max-w-\[170px\]{max-width:170px}.max-w-full{max-width:100%}.flex-1{flex:1 1 0%}.shrink-0{flex-shrink:0}.-translate-y-1\/2{--tw-translate-y:-50%;transform:translate(var(--tw-translate-x), var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y))}.cursor-pointer{cursor:pointer}.grid-cols-3{grid-template-columns:repeat(3, minmax(0, 1fr))}.grid-cols-1{grid-template-columns:repeat(1, minmax(0, 1fr))}.grid-cols-2{grid-template-columns:repeat(2, minmax(0, 1fr))}.flex-col{flex-direction:column}.flex-wrap{flex-wrap:wrap}.items-start{align-items:flex-start}.items-center{align-items:center}.justify-end{justify-content:flex-end}.justify-center{justify-content:center}.justify-between{justify-content:space-between}.gap-1{gap:0.25rem}.gap-1\.5{gap:0.375rem}.gap-2{gap:0.5rem}.gap-2\.5{gap:0.625rem}.gap-3{gap:0.75rem}.gap-3\.5{gap:0.875rem}.space-y-4 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(1rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(1rem * var(--tw-space-y-reverse))}.space-y-1 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(0.25rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(0.25rem * var(--tw-space-y-reverse))}.space-y-1\.5 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(0.375rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(0.375rem * var(--tw-space-y-reverse))}.space-y-3 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(0.75rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(0.75rem * var(--tw-space-y-reverse))}.space-x-1 > :not([hidden]) ~ :not([hidden]){--tw-space-x-reverse:0;margin-right:calc(0.25rem * var(--tw-space-x-reverse));margin-left:calc(0.25rem * calc(1 - var(--tw-space-x-reverse)))}.space-y-2 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(0.5rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(0.5rem * var(--tw-space-y-reverse))}.divide-y > :not([hidden]) ~ :not([hidden]){--tw-divide-y-reverse:0;border-top-width:calc(1px * calc(1 - var(--tw-divide-y-reverse)));border-bottom-width:calc(1px * var(--tw-divide-y-reverse))}.divide-slate-100 > :not([hidden]) ~ :not([hidden]){--tw-divide-opacity:1;border-color:rgb(241 245 249 / var(--tw-divide-opacity, 1))}.self-center{align-self:center}.overflow-hidden{overflow:hidden}.overflow-x-auto{overflow-x:auto}.overflow-y-auto{overflow-y:auto}.truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.whitespace-nowrap{white-space:nowrap}.rounded{border-radius:0.25rem}.rounded-2xl{border-radius:1rem}.rounded-3xl{border-radius:1.5rem}.rounded-full{border-radius:9999px}.rounded-lg{border-radius:0.5rem}.rounded-xl{border-radius:0.75rem}.rounded-md{border-radius:0.375rem}.border{border-width:1px}.border-2{border-width:2px}.border-b{border-bottom-width:1px}.border-t{border-top-width:1px}.border-r{border-right-width:1px}.border-amber-300{--tw-border-opacity:1;border-color:rgb(252 211 77 / var(--tw-border-opacity, 1))}.border-amber-400{--tw-border-opacity:1;border-color:rgb(251 191 36 / var(--tw-border-opacity, 1))}.border-slate-200{--tw-border-opacity:1;border-color:rgb(226 232 240 / var(--tw-border-opacity, 1))}.border-slate-200\/80{border-color:rgb(226 232 240 / 0.8)}.border-slate-300{--tw-border-opacity:1;border-color:rgb(203 213 225 / var(--tw-border-opacity, 1))}.border-blue-200{--tw-border-opacity:1;border-color:rgb(191 219 254 / var(--tw-border-opacity, 1))}.border-blue-200\/80{border-color:rgb(191 219 254 / 0.8)}.border-blue-300{--tw-border-opacity:1;border-color:rgb(147 197 253 / var(--tw-border-opacity, 1))}.border-emerald-200{--tw-border-opacity:1;border-color:rgb(167 243 208 / var(--tw-border-opacity, 1))}.border-red-200{--tw-border-opacity:1;border-color:rgb(254 202 202 / var(--tw-border-opacity, 1))}.border-slate-300\/90{border-color:rgb(203 213 225 / 0.9)}.border-amber-200{--tw-border-opacity:1;border-color:rgb(253 230 138 / var(--tw-border-opacity, 1))}.border-blue-400{--tw-border-opacity:1;border-color:rgb(96 165 250 / var(--tw-border-opacity, 1))}.border-blue-500{--tw-border-opacity:1;border-color:rgb(59 130 246 / var(--tw-border-opacity, 1))}.border-blue-700{--tw-border-opacity:1;border-color:rgb(29 78 216 / var(--tw-border-opacity, 1))}.border-emerald-300{--tw-border-opacity:1;border-color:rgb(110 231 183 / var(--tw-border-opacity, 1))}.border-indigo-300{--tw-border-opacity:1;border-color:rgb(165 180 252 / var(--tw-border-opacity, 1))}.border-red-300{--tw-border-opacity:1;border-color:rgb(252 165 165 / var(--tw-border-opacity, 1))}.bg-amber-100\/95{background-color:rgb(254 243 199 / 0.95)}.bg-amber-400{--tw-bg-opacity:1;background-color:rgb(251 191 36 / var(--tw-bg-opacity, 1))}.bg-amber-50\/70{background-color:rgb(255 251 235 / 0.7)}.bg-blue-700{--tw-bg-opacity:1;background-color:rgb(29 78 216 / var(--tw-bg-opacity, 1))}.bg-emerald-700{--tw-bg-opacity:1;background-color:rgb(4 120 87 / var(--tw-bg-opacity, 1))}.bg-slate-100\/80{background-color:rgb(241 245 249 / 0.8)}.bg-slate-50\/90{background-color:rgb(248 250 252 / 0.9)}.bg-slate-800{--tw-bg-opacity:1;background-color:rgb(30 41 59 / var(--tw-bg-opacity, 1))}.bg-teal-700{--tw-bg-opacity:1;background-color:rgb(15 118 110 / var(--tw-bg-opacity, 1))}.bg-white{--tw-bg-opacity:1;background-color:rgb(255 255 255 / var(--tw-bg-opacity, 1))}.bg-white\/15{background-color:rgb(255 255 255 / 0.15)}.bg-white\/80{background-color:rgb(255 255 255 / 0.8)}.bg-amber-50\/50{background-color:rgb(255 251 235 / 0.5)}.bg-red-600{--tw-bg-opacity:1;background-color:rgb(220 38 38 / var(--tw-bg-opacity, 1))}.bg-slate-100{--tw-bg-opacity:1;background-color:rgb(241 245 249 / var(--tw-bg-opacity, 1))}.bg-slate-200{--tw-bg-opacity:1;background-color:rgb(226 232 240 / var(--tw-bg-opacity, 1))}.bg-slate-50{--tw-bg-opacity:1;background-color:rgb(248 250 252 / var(--tw-bg-opacity, 1))}.bg-amber-500{--tw-bg-opacity:1;background-color:rgb(245 158 11 / var(--tw-bg-opacity, 1))}.bg-red-100{--tw-bg-opacity:1;background-color:rgb(254 226 226 / var(--tw-bg-opacity, 1))}.bg-sky-600{--tw-bg-opacity:1;background-color:rgb(2 132 199 / var(--tw-bg-opacity, 1))}.bg-\[\#FFFDF7\]{--tw-bg-opacity:1;background-color:rgb(255 253 247 / var(--tw-bg-opacity, 1))}.bg-amber-100{--tw-bg-opacity:1;background-color:rgb(254 243 199 / var(--tw-bg-opacity, 1))}.bg-amber-50{--tw-bg-opacity:1;background-color:rgb(255 251 235 / var(--tw-bg-opacity, 1))}.bg-amber-50\/90{background-color:rgb(255 251 235 / 0.9)}.bg-blue-50\/60{background-color:rgb(239 246 255 / 0.6)}.bg-emerald-50{--tw-bg-opacity:1;background-color:rgb(236 253 245 / var(--tw-bg-opacity, 1))}.bg-emerald-600{--tw-bg-opacity:1;background-color:rgb(5 150 105 / var(--tw-bg-opacity, 1))}.bg-indigo-50{--tw-bg-opacity:1;background-color:rgb(238 242 255 / var(--tw-bg-opacity, 1))}.bg-red-50{--tw-bg-opacity:1;background-color:rgb(254 242 242 / var(--tw-bg-opacity, 1))}.object-contain{object-fit:contain}.p-1{padding:0.25rem}.p-1\.5{padding:0.375rem}.p-2{padding:0.5rem}.p-4{padding:1rem}.p-5{padding:1.25rem}.p-6{padding:1.5rem}.p-3{padding:0.75rem}.p-3\.5{padding:0.875rem}.px-2{padding-left:0.5rem;padding-right:0.5rem}.px-2\.5{padding-left:0.625rem;padding-right:0.625rem}.px-3{padding-left:0.75rem;padding-right:0.75rem}.px-3\.5{padding-left:0.875rem;padding-right:0.875rem}.px-4{padding-left:1rem;padding-right:1rem}.py-0\.5{padding-top:0.125rem;padding-bottom:0.125rem}.py-1{padding-top:0.25rem;padding-bottom:0.25rem}.py-1\.5{padding-top:0.375rem;padding-bottom:0.375rem}.py-2{padding-top:0.5rem;padding-bottom:0.5rem}.py-2\.5{padding-top:0.625rem;padding-bottom:0.625rem}.py-3{padding-top:0.75rem;padding-bottom:0.75rem}.px-1{padding-left:0.25rem;padding-right:0.25rem}.px-5{padding-left:1.25rem;padding-right:1.25rem}.pr-16{padding-right:4rem}.pb-2\.5{padding-bottom:0.625rem}.pb-24{padding-bottom:6rem}.pt-3{padding-top:0.75rem}.text-left{text-align:left}.text-center{text-align:center}.text-right{text-align:right}.font-mono{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace}.text-\[10px\]{font-size:10px}.text-\[11px\]{font-size:11px}.text-lg{font-size:1.125rem;line-height:1.75rem}.text-sm{font-size:0.875rem;line-height:1.25rem}.text-xs{font-size:0.75rem;line-height:1rem}.text-2xl{font-size:1.5rem;line-height:2rem}.text-base{font-size:1rem;line-height:1.5rem}.font-bold{font-weight:700}.font-extrabold{font-weight:800}.font-semibold{font-weight:600}.uppercase{text-transform:uppercase}.leading-tight{line-height:1.25}.leading-relaxed{line-height:1.625}.tracking-tight{letter-spacing:-0.025em}.tracking-wider{letter-spacing:0.05em}.tracking-widest{letter-spacing:0.1em}.text-amber-950{--tw-text-opacity:1;color:rgb(69 26 3 / var(--tw-text-opacity, 1))}.text-blue-100{--tw-text-opacity:1;color:rgb(219 234 254 / var(--tw-text-opacity, 1))}.text-blue-700{--tw-text-opacity:1;color:rgb(29 78 216 / var(--tw-text-opacity, 1))}.text-slate-500{--tw-text-opacity:1;color:rgb(100 116 139 / var(--tw-text-opacity, 1))}.text-slate-600{--tw-text-opacity:1;color:rgb(71 85 105 / var(--tw-text-opacity, 1))}.text-slate-700{--tw-text-opacity:1;color:rgb(51 65 85 / var(--tw-text-opacity, 1))}.text-slate-900{--tw-text-opacity:1;color:rgb(15 23 42 / var(--tw-text-opacity, 1))}.text-slate-950{--tw-text-opacity:1;color:rgb(2 6 23 / var(--tw-text-opacity, 1))}.text-white{--tw-text-opacity:1;color:rgb(255 255 255 / var(--tw-text-opacity, 1))}.text-blue-600{--tw-text-opacity:1;color:rgb(37 99 235 / var(--tw-text-opacity, 1))}.text-emerald-600{--tw-text-opacity:1;color:rgb(5 150 105 / var(--tw-text-opacity, 1))}.text-emerald-700{--tw-text-opacity:1;color:rgb(4 120 87 / var(--tw-text-opacity, 1))}.text-red-600{--tw-text-opacity:1;color:rgb(220 38 38 / var(--tw-text-opacity, 1))}.text-slate-400{--tw-text-opacity:1;color:rgb(148 163 184 / var(--tw-text-opacity, 1))}.text-slate-800{--tw-text-opacity:1;color:rgb(30 41 59 / var(--tw-text-opacity, 1))}.text-red-700{--tw-text-opacity:1;color:rgb(185 28 28 / var(--tw-text-opacity, 1))}.text-amber-800{--tw-text-opacity:1;color:rgb(146 64 14 / var(--tw-text-opacity, 1))}.text-blue-800{--tw-text-opacity:1;color:rgb(30 64 175 / var(--tw-text-opacity, 1))}.text-blue-900{--tw-text-opacity:1;color:rgb(30 58 138 / var(--tw-text-opacity, 1))}.text-emerald-800{--tw-text-opacity:1;color:rgb(6 95 70 / var(--tw-text-opacity, 1))}.text-emerald-900{--tw-text-opacity:1;color:rgb(6 78 59 / var(--tw-text-opacity, 1))}.text-indigo-800{--tw-text-opacity:1;color:rgb(55 48 163 / var(--tw-text-opacity, 1))}.text-amber-900{--tw-text-opacity:1;color:rgb(120 53 15 / var(--tw-text-opacity, 1))}.opacity-80{opacity:0.8}.shadow-md{--tw-shadow:0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);--tw-shadow-colored:0 4px 6px -1px var(--tw-shadow-color), 0 2px 4px -2px var(--tw-shadow-color);box-shadow:var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow)}.shadow-sm{--tw-shadow:0 1px 2px 0 rgb(0 0 0 / 0.05);--tw-shadow-colored:0 1px 2px 0 var(--tw-shadow-color);box-shadow:var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow)}.shadow-xl{--tw-shadow:0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);--tw-shadow-colored:0 20px 25px -5px var(--tw-shadow-color), 0 8px 10px -6px var(--tw-shadow-color);box-shadow:var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow)}.shadow{--tw-shadow:0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);--tw-shadow-colored:0 1px 3px 0 var(--tw-shadow-color), 0 1px 2px -1px var(--tw-shadow-color);box-shadow:var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow)}.outline-none{outline:2px solid transparent;outline-offset:2px}.ring-2{--tw-ring-offset-shadow:var(--tw-ring-inset) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);--tw-ring-shadow:var(--tw-ring-inset) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color);box-shadow:var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow, 0 0 #0000)}.ring-1{--tw-ring-offset-shadow:var(--tw-ring-inset) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);--tw-ring-shadow:var(--tw-ring-inset) 0 0 0 calc(1px + var(--tw-ring-offset-width)) var(--tw-ring-color);box-shadow:var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow, 0 0 #0000)}.ring-amber-300{--tw-ring-opacity:1;--tw-ring-color:rgb(252 211 77 / var(--tw-ring-opacity, 1))}.ring-blue-200{--tw-ring-opacity:1;--tw-ring-color:rgb(191 219 254 / var(--tw-ring-opacity, 1))}.ring-blue-300{--tw-ring-opacity:1;--tw-ring-color:rgb(147 197 253 / var(--tw-ring-opacity, 1))}.transition{transition-property:color, background-color, border-color, fill, stroke, opacity, box-shadow, transform, filter, -webkit-text-decoration-color, -webkit-backdrop-filter;transition-property:color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform, filter, backdrop-filter;transition-property:color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform, filter, backdrop-filter, -webkit-text-decoration-color, -webkit-backdrop-filter;transition-timing-function:cubic-bezier(0.4, 0, 0.2, 1);transition-duration:150ms}.hover\:bg-blue-800:hover{--tw-bg-opacity:1;background-color:rgb(30 64 175 / var(--tw-bg-opacity, 1))}.hover\:bg-emerald-800:hover{--tw-bg-opacity:1;background-color:rgb(6 95 70 / var(--tw-bg-opacity, 1))}.hover\:bg-slate-900:hover{--tw-bg-opacity:1;background-color:rgb(15 23 42 / var(--tw-bg-opacity, 1))}.hover\:bg-teal-800:hover{--tw-bg-opacity:1;background-color:rgb(17 94 89 / var(--tw-bg-opacity, 1))}.hover\:bg-white:hover{--tw-bg-opacity:1;background-color:rgb(255 255 255 / var(--tw-bg-opacity, 1))}.hover\:bg-red-700:hover{--tw-bg-opacity:1;background-color:rgb(185 28 28 / var(--tw-bg-opacity, 1))}.hover\:bg-slate-100:hover{--tw-bg-opacity:1;background-color:rgb(241 245 249 / var(--tw-bg-opacity, 1))}.hover\:bg-slate-200:hover{--tw-bg-opacity:1;background-color:rgb(226 232 240 / var(--tw-bg-opacity, 1))}.hover\:bg-slate-300:hover{--tw-bg-opacity:1;background-color:rgb(203 213 225 / var(--tw-bg-opacity, 1))}.hover\:bg-amber-600:hover{--tw-bg-opacity:1;background-color:rgb(217 119 6 / var(--tw-bg-opacity, 1))}.hover\:bg-sky-700:hover{--tw-bg-opacity:1;background-color:rgb(3 105 161 / var(--tw-bg-opacity, 1))}.hover\:bg-slate-50\/80:hover{background-color:rgb(248 250 252 / 0.8)}.hover\:bg-amber-100:hover{--tw-bg-opacity:1;background-color:rgb(254 243 199 / var(--tw-bg-opacity, 1))}.hover\:bg-amber-200:hover{--tw-bg-opacity:1;background-color:rgb(253 230 138 / var(--tw-bg-opacity, 1))}.hover\:bg-blue-50:hover{--tw-bg-opacity:1;background-color:rgb(239 246 255 / var(--tw-bg-opacity, 1))}.hover\:bg-emerald-100:hover{--tw-bg-opacity:1;background-color:rgb(209 250 229 / var(--tw-bg-opacity, 1))}.hover\:bg-emerald-700:hover{--tw-bg-opacity:1;background-color:rgb(4 120 87 / var(--tw-bg-opacity, 1))}.hover\:bg-indigo-100:hover{--tw-bg-opacity:1;background-color:rgb(224 231 255 / var(--tw-bg-opacity, 1))}.hover\:bg-red-100:hover{--tw-bg-opacity:1;background-color:rgb(254 226 226 / var(--tw-bg-opacity, 1))}.hover\:text-blue-900:hover{--tw-text-opacity:1;color:rgb(30 58 138 / var(--tw-text-opacity, 1))}.focus\:ring-2:focus{--tw-ring-offset-shadow:var(--tw-ring-inset) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);--tw-ring-shadow:var(--tw-ring-inset) 0 0 0 calc(2px + var(--tw-ring-offset-width)) var(--tw-ring-color);box-shadow:var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow, 0 0 #0000)}.focus\:ring-amber-500:focus{--tw-ring-opacity:1;--tw-ring-color:rgb(245 158 11 / var(--tw-ring-opacity, 1))}.focus\:ring-blue-600:focus{--tw-ring-opacity:1;--tw-ring-color:rgb(37 99 235 / var(--tw-ring-opacity, 1))}@media (min-width: 640px){.sm\:col-span-2{grid-column:span 2 / span 2}.sm\:inline{display:inline}.sm\:h-10{height:2.5rem}.sm\:w-10{width:2.5rem}.sm\:w-28{width:7rem}.sm\:max-w-\[230px\]{max-width:230px}.sm\:grid-cols-2{grid-template-columns:repeat(2, minmax(0, 1fr))}.sm\:grid-cols-4{grid-template-columns:repeat(4, minmax(0, 1fr))}.sm\:flex-row{flex-direction:row}.sm\:items-center{align-items:center}.sm\:gap-2\.5{gap:0.625rem}.sm\:p-6{padding:1.5rem}.sm\:px-5{padding-left:1.25rem;padding-right:1.25rem}.sm\:text-base{font-size:1rem;line-height:1.5rem}}@media (min-width: 768px){.md\:inline{display:inline}.md\:grid-cols-2{grid-template-columns:repeat(2, minmax(0, 1fr))}}@media (min-width: 1024px){.lg\:pb-8{padding-bottom:2rem}}</style></head>
 <body>
 
 <div id="cbt-app-shell">
-  <div id="app"></div>
+  <div id="app">
+    <div class="min-h-screen flex flex-col pb-24 lg:pb-8">
+      
+    <header class="no-print pusdatin-header text-white shadow-md sticky top-0 z-40 h-16 flex items-center">
+      <div class="w-full max-w-7xl mx-auto px-3 sm:px-5 flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2.5 min-w-0">
+          <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-white p-1 flex items-center justify-center shadow-sm shrink-0">
+            <img src="data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2080%2090%22%3E%0A%20%20%20%20%3Cpath%20d%3D%22M8%2010%20Q40%202%2072%2010%20L72%2044%20C72%2067%2040%2084%2040%2084%20C40%2084%208%2067%208%2044%20Z%22%20fill%3D%22%231D4ED8%22%20stroke%3D%22%23EAB308%22%20stroke-width%3D%224%22%2F%3E%0A%20%20%20%20%3Ccircle%20cx%3D%2240%22%20cy%3D%2240%22%20r%3D%2216%22%20fill%3D%22%23FFFFFF%22%2F%3E%0A%20%20%20%20%3Ctext%20x%3D%2240%22%20y%3D%2245%22%20font-family%3D%22Arial%2Csans-serif%22%20font-size%3D%2213%22%20font-weight%3D%22bold%22%20fill%3D%22%231E3A8A%22%20text-anchor%3D%22middle%22%3ECBT%3C%2Ftext%3E%0A%20%20%3C%2Fsvg%3E" onerror="this.onerror=null;this.src='data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2080%2090%22%3E%0A%20%20%20%20%3Cpath%20d%3D%22M8%2010%20Q40%202%2072%2010%20L72%2044%20C72%2067%2040%2084%2040%2084%20C40%2084%208%2067%208%2044%20Z%22%20fill%3D%22%231D4ED8%22%20stroke%3D%22%23EAB308%22%20stroke-width%3D%224%22%2F%3E%0A%20%20%20%20%3Ccircle%20cx%3D%2240%22%20cy%3D%2240%22%20r%3D%2216%22%20fill%3D%22%23FFFFFF%22%2F%3E%0A%20%20%20%20%3Ctext%20x%3D%2240%22%20y%3D%2245%22%20font-family%3D%22Arial%2Csans-serif%22%20font-size%3D%2213%22%20font-weight%3D%22bold%22%20fill%3D%22%231E3A8A%22%20text-anchor%3D%22middle%22%3ECBT%3C%2Ftext%3E%0A%20%20%3C%2Fsvg%3E'" alt="Logo" class="w-full h-full object-contain">
+          </div>
+          <div class="min-w-0">
+            <div class="flex items-center gap-1.5">
+              <span class="text-[10px] font-extrabold tracking-wider uppercase bg-amber-400 text-slate-950 px-2 py-0.5 rounded">PUSDATIN • ANBK</span>
+              <span class="text-xs text-blue-100 truncate hidden sm:inline">Panel Administrator</span>
+            </div>
+            <h1 class="text-xs sm:text-base font-extrabold tracking-tight leading-tight truncate">SDN GEDONGBOYOUNTUNG (NPSN: 20506432)</h1>
+          </div>
+        </div>
+        <div class="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+          
+        <select onchange="CBT.setActiveSekolah(this.value)" class="bg-white text-slate-900 text-xs font-extrabold px-2.5 py-1.5 rounded-xl border border-blue-300 max-w-[170px] sm:max-w-[230px]">
+          <option value="ALL">🌐 Semua Sekolah (2)</option>
+          
+            <option value="sek-1" selected="">🏫 SDN GEDONGBOYOUNTUNG</option>
+          
+            <option value="sek-2">🏫 SDN SUKOMAJU</option>
+          
+        </select>
+        
+          <span class="px-2.5 py-1 rounded-lg bg-amber-400 text-slate-950 text-xs font-extrabold hidden md:inline">TOKEN: SAS2026</span>
+        
+        <button onclick="CBT.logout()" class="px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-xs font-bold shadow">Logout</button>
+      
+        </div>
+      </div>
+    </header>
+  
+
+      <aside class="desktop-sidebar no-print glass-panel border-r border-slate-200 flex-col justify-between p-3.5 overflow-y-auto">
+        <div class="space-y-1">
+          
+            <button onclick="CBT.setAdminTab('dashboard')" class="w-full px-3.5 py-2.5 rounded-xl text-left text-xs font-bold transition text-slate-600 hover:bg-slate-100">
+              Dashboard &amp; Token
+            </button>
+          
+            <button onclick="CBT.setAdminTab('sekolah')" class="w-full px-3.5 py-2.5 rounded-xl text-left text-xs font-bold transition text-slate-600 hover:bg-slate-100">
+              Master Sekolah (NPSN)
+            </button>
+          
+            <button onclick="CBT.setAdminTab('siswa')" class="w-full px-3.5 py-2.5 rounded-xl text-left text-xs font-bold transition text-slate-600 hover:bg-slate-100">
+              Data Siswa &amp; Excel
+            </button>
+          
+            <button onclick="CBT.setAdminTab('proktor')" class="w-full px-3.5 py-2.5 rounded-xl text-left text-xs font-bold transition text-slate-600 hover:bg-slate-100">
+              Data Guru / Proktor
+            </button>
+          
+            <button onclick="CBT.setAdminTab('ruang_sesi')" class="w-full px-3.5 py-2.5 rounded-xl text-left text-xs font-bold transition text-slate-600 hover:bg-slate-100">
+              Ruang &amp; Sesi
+            </button>
+          
+            <button onclick="CBT.setAdminTab('mapel')" class="w-full px-3.5 py-2.5 rounded-xl text-left text-xs font-bold transition text-slate-600 hover:bg-slate-100">
+              Manajemen Ujian
+            </button>
+          
+            <button onclick="CBT.setAdminTab('bank_soal')" class="w-full px-3.5 py-2.5 rounded-xl text-left text-xs font-bold transition bg-blue-700 text-white shadow-sm">
+              Bank Soal (6 Tipe)
+            </button>
+          
+            <button onclick="CBT.setAdminTab('jadwal')" class="w-full px-3.5 py-2.5 rounded-xl text-left text-xs font-bold transition text-slate-600 hover:bg-slate-100">
+              Distribusi Peserta
+            </button>
+          
+            <button onclick="CBT.setAdminTab('hasil')" class="w-full px-3.5 py-2.5 rounded-xl text-left text-xs font-bold transition text-slate-600 hover:bg-slate-100">
+              Koreksi, Rekap &amp; Analisis
+            </button>
+          
+            <button onclick="CBT.setAdminTab('kartu')" class="w-full px-3.5 py-2.5 rounded-xl text-left text-xs font-bold transition text-slate-600 hover:bg-slate-100">
+              Cetak Kartu F4
+            </button>
+          
+            <button onclick="CBT.setAdminTab('panduan')" class="w-full px-3.5 py-2.5 rounded-xl text-left text-xs font-bold transition text-slate-600 hover:bg-slate-100">
+              SQL &amp; Panduan Deploy
+            </button>
+          
+        </div>
+        <div class="pt-3 mt-3 border-t border-slate-200 text-[11px] text-slate-500 px-2">
+          <div class="font-bold text-slate-700">CBT Pusdatin Multi-Sekolah</div>
+          <div>Mode Preview Lokal</div>
+        </div>
+      </aside>
+
+      <nav class="mobile-bottom-nav no-print fixed bottom-3 left-3 right-3 z-40 glass-panel rounded-2xl shadow-xl p-1.5 justify-between items-center border border-slate-300/90">
+        
+          <button onclick="CBT.setAdminTab('dashboard')" class="flex-1 py-2 px-1 rounded-xl text-[11px] font-extrabold transition text-slate-600">
+            Monitor
+          </button>
+        
+          <button onclick="CBT.setAdminTab('sekolah')" class="flex-1 py-2 px-1 rounded-xl text-[11px] font-extrabold transition text-slate-600">
+            Sekolah
+          </button>
+        
+          <button onclick="CBT.setAdminTab('siswa')" class="flex-1 py-2 px-1 rounded-xl text-[11px] font-extrabold transition text-slate-600">
+            Siswa
+          </button>
+        
+          <button onclick="CBT.setAdminTab('proktor')" class="flex-1 py-2 px-1 rounded-xl text-[11px] font-extrabold transition text-slate-600">
+            Proktor
+          </button>
+        
+        <button onclick="CBT.toggleMoreMenu()" class="flex-1 py-2 px-1 rounded-xl text-[11px] font-extrabold transition bg-blue-700 text-white shadow">
+          Lainnya ☰
+        </button>
+      </nav>
+
+      
+
+      <main class="admin-main-offset flex-1 p-3 sm:p-6">
+        <div class="max-w-6xl mx-auto">
+          
+    <div class="glass-panel rounded-2xl p-5 shadow-sm space-y-4">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <div class="flex flex-wrap items-center gap-2">
+          <label class="text-xs font-extrabold">Paket Ujian:</label>
+          <select onchange="CBT.selectMapelBankSoal(this.value)" class="px-3 py-2 rounded-lg border text-xs font-bold bg-white max-w-full">
+            <option value="m-1" selected="">LIT-VI - Asesmen Literasi &amp; Numerasi Kelas VI</option>
+          </select>
+          
+            <button type="button" onclick="CBT.openMapelModal()" title="Buat paket ujian baru langsung dari menu Bank Soal" class="px-3 py-2 rounded-lg bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold shadow-xs cursor-pointer transition">
+              + Tambah Paket
+            </button>
+            
+              <button type="button" onclick="CBT.clearSoalPaket('m-1')" class="px-2.5 py-2 rounded-lg border text-xs font-bold transition bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-300 cursor-pointer">
+                🗑 Kosongkan Soal (2)
+              </button>
+              <button type="button" onclick="CBT.deletePaketSoal('m-1')" class="px-2.5 py-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 border border-red-300 text-xs font-bold cursor-pointer transition">
+                ✕ Hapus Paket
+              </button>
+            
+          
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button onclick="CBT.downloadTemplateSoal()" class="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-xs font-bold">⬇ Template 6 Tipe</button>
+          <label class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold cursor-pointer">
+            ⬆ Import Soal Excel
+            <input type="file" accept=".xlsx,.xls,.csv" onchange="CBT.handleImportSoalExcel(event)" class="hidden">
+          </label>
+          <button onclick="CBT.exportSoalExcel()" class="px-3 py-1.5 rounded-lg bg-blue-700 text-white text-xs font-bold">⬇ Export Soal</button>
+        </div>
+      </div>
+
+      <div class="bg-white border border-slate-200 rounded-xl p-3 space-y-2">
+        <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
+          <span class="font-extrabold text-slate-700">Pilih Nomor Soal:</span>
+          <span class="text-[11px] text-slate-500">Total: <strong>2</strong> butir soal</span>
+        </div>
+        <div class="flex flex-wrap gap-1.5">
+          
+              <button type="button" onclick="CBT.onNomorUrutChange(1)" class="px-2.5 py-1.5 rounded-lg border text-xs font-extrabold transition bg-blue-700 text-white border-blue-700 shadow-sm">
+                No. 1 <span class="text-[10px] opacity-80">(PG)</span>
+              </button>
+            
+              <button type="button" onclick="CBT.onNomorUrutChange(2)" class="px-2.5 py-1.5 rounded-lg border text-xs font-extrabold transition bg-slate-50 hover:bg-blue-50 text-slate-700 border-slate-300">
+                No. 2 <span class="text-[10px] opacity-80">(PGK)</span>
+              </button>
+            
+          <button type="button" onclick="CBT.cancelEditSoal()" class="px-3 py-1.5 rounded-lg border text-xs font-extrabold transition bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300">
+            + Soal Baru (No. 3)
+          </button>
+        </div>
+      </div>
+
+      <form id="form-bank-soal" onsubmit="CBT.saveSoal(event)" oninput="CBT.updateSoalPreview()" onchange="CBT.updateSoalPreview()" class="bg-blue-50/60 border-blue-400 ring-2 ring-blue-200 border rounded-xl p-4 space-y-3 text-xs transition">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <h3 class="font-extrabold text-blue-900">
+            ✏️ Menampilkan &amp; Edit Soal Nomor 1 (PG)
+          </h3>
+          
+            <button type="button" onclick="CBT.cancelEditSoal()" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold shadow-xs">
+              + Buat Soal Baru (No. 3)
+            </button>
+          
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
+          <div>
+            <label class="block text-[11px] font-bold text-slate-600 mb-1">Nomor Soal:</label>
+            <input name="nomor_urut" type="number" min="1" value="1" onchange="CBT.onNomorUrutChange(this.value)" required="" placeholder="No. Urut" class="w-full px-3 py-2 rounded-lg border bg-white font-extrabold text-blue-800">
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold text-slate-600 mb-1">Tipe Soal (6 Format):</label>
+            <select name="jenis_soal" onchange="CBT.onFormJenisSoalChange(this.value)" class="w-full px-3 py-2 rounded-lg border bg-white font-bold">
+              <option value="PG" selected="">1. Pilihan Ganda (PG)</option>
+              <option value="PGK">2. Pilihan Ganda Kompleks (PGK)</option>
+              <option value="BS">3. Benar / Salah (BS)</option>
+              <option value="MJ">4. Menjodohkan (MJ)</option>
+              <option value="ISIAN">5. Isian Singkat (ISIAN)</option>
+              <option value="URAIAN">6. Uraian / Esai (URAIAN)</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold text-slate-600 mb-1">Tautan Stimulus / Wacana:</label>
+            <select name="stimulus_id" onchange="CBT.onFormStimulusChange(this.value)" class="w-full px-3 py-2 rounded-lg border bg-white font-semibold">
+              <option value="">-- Tanpa Stimulus --</option>
+              <option value="__NEW__">+ Buat Stimulus Baru</option>
+              <option value="st-1" selected="">Stimulus #1: Menjaga Ekosistem Sungai Bengawan Solo</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-[11px] font-bold text-slate-600 mb-1">Bobot Soal:</label>
+            <input name="bobot" type="number" step="0.5" value="2" required="" placeholder="Bobot Soal" class="w-full px-3 py-2 rounded-lg border bg-white font-bold">
+          </div>
+        </div>
+
+        <div class="bg-amber-50/90 border border-amber-200 rounded-xl p-3 space-y-2">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <span class="font-extrabold text-amber-950">📄 Panel Stimulus / Wacana &amp; URL Gambar</span>
+            <span id="stimulus-status-label" class="text-[11px] text-amber-800">Terhubung: Stimulus #1</span>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <input name="stimulus_judul" value="Menjaga Ekosistem Sungai Bengawan Solo" placeholder="Judul Stimulus / Wacana (Opsional)" class="px-3 py-2 rounded-lg border border-amber-300 bg-white font-semibold">
+            <input name="stimulus_gambar_url" value="" oninput="CBT.onStimulusUrlInput(this.value)" placeholder="URL Gambar Stimulus (https://...)" class="px-3 py-2 rounded-lg border border-amber-300 bg-white">
+          </div>
+          <div class="space-y-1">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <label class="font-bold text-amber-950 text-[11px]">Isi Wacana / Bacaan Stimulus (WYSIWYG &amp; Rumus KaTeX):</label>
+              <button type="button" onclick="CBT.insertKatexFraction('stimulus')" class="px-2.5 py-1 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-950 border border-amber-300 font-bold text-[11px]">
+                ½ Sisipkan Pecahan (KaTeX)
+              </button>
+            </div>
+            <div id="quill-toolbar-stimulus" class="ql-toolbar ql-snow">
+              <span class="ql-formats">
+                <button class="ql-bold" title="Tebal (Bold)" type="button"><svg viewBox="0 0 18 18"> <path class="ql-stroke" d="M5,4H9.5A2.5,2.5,0,0,1,12,6.5v0A2.5,2.5,0,0,1,9.5,9H5A0,0,0,0,1,5,9V4A0,0,0,0,1,5,4Z"></path> <path class="ql-stroke" d="M5,9h5.5A2.5,2.5,0,0,1,13,11.5v0A2.5,2.5,0,0,1,10.5,14H5a0,0,0,0,1,0,0V9A0,0,0,0,1,5,9Z"></path> </svg></button>
+                <button class="ql-italic" title="Miring (Italic)" type="button"><svg viewBox="0 0 18 18"> <line class="ql-stroke" x1="7" x2="13" y1="4" y2="4"></line> <line class="ql-stroke" x1="5" x2="11" y1="14" y2="14"></line> <line class="ql-stroke" x1="8" x2="10" y1="14" y2="4"></line> </svg></button>
+                <button class="ql-underline" title="Garis Bawah (Underline)" type="button"><svg viewBox="0 0 18 18"> <path class="ql-stroke" d="M5,3V9a4.012,4.012,0,0,0,4,4H9a4.012,4.012,0,0,0,4-4V3"></path> <rect class="ql-fill" height="1" rx="0.5" ry="0.5" width="12" x="3" y="15"></rect> </svg></button>
+              </span>
+              <span class="ql-formats">
+                <button class="ql-align" value="" title="Rata Kiri" type="button"><svg viewBox="0 0 18 18"> <line class="ql-stroke" x1="3" x2="15" y1="9" y2="9"></line> <line class="ql-stroke" x1="3" x2="13" y1="14" y2="14"></line> <line class="ql-stroke" x1="3" x2="9" y1="4" y2="4"></line> </svg></button>
+                <button class="ql-align" value="center" title="Rata Tengah" type="button"><svg viewBox="0 0 18 18"> <line class="ql-stroke" x1="15" x2="3" y1="9" y2="9"></line> <line class="ql-stroke" x1="14" x2="4" y1="14" y2="14"></line> <line class="ql-stroke" x1="12" x2="6" y1="4" y2="4"></line> </svg></button>
+                <button class="ql-align" value="right" title="Rata Kanan" type="button"><svg viewBox="0 0 18 18"> <line class="ql-stroke" x1="15" x2="3" y1="9" y2="9"></line> <line class="ql-stroke" x1="15" x2="5" y1="14" y2="14"></line> <line class="ql-stroke" x1="15" x2="9" y1="4" y2="4"></line> </svg></button>
+                <button class="ql-align" value="justify" title="Rata Kanan-Kiri" type="button"><svg viewBox="0 0 18 18"> <line class="ql-stroke" x1="15" x2="3" y1="9" y2="9"></line> <line class="ql-stroke" x1="15" x2="3" y1="14" y2="14"></line> <line class="ql-stroke" x1="15" x2="3" y1="4" y2="4"></line> </svg></button>
+              </span>
+              <span class="ql-formats">
+                <button class="ql-list" value="ordered" title="Daftar Bernomor" type="button"><svg viewBox="0 0 18 18"> <line class="ql-stroke" x1="7" x2="15" y1="4" y2="4"></line> <line class="ql-stroke" x1="7" x2="15" y1="9" y2="9"></line> <line class="ql-stroke" x1="7" x2="15" y1="14" y2="14"></line> <line class="ql-stroke ql-thin" x1="2.5" x2="4.5" y1="5.5" y2="5.5"></line> <path class="ql-fill" d="M3.5,6A0.5,0.5,0,0,1,3,5.5V3.085l-0.276.138A0.5,0.5,0,0,1,2.053,3c-0.124-.247-0.023-0.324.224-0.447l1-.5A0.5,0.5,0,0,1,4,2.5v3A0.5,0.5,0,0,1,3.5,6Z"></path> <path class="ql-stroke ql-thin" d="M4.5,10.5h-2c0-.234,1.85-1.076,1.85-2.234A0.959,0.959,0,0,0,2.5,8.156"></path> <path class="ql-stroke ql-thin" d="M2.5,14.846a0.959,0.959,0,0,0,1.85-.109A0.7,0.7,0,0,0,3.75,14a0.688,0.688,0,0,0,.6-0.736,0.959,0.959,0,0,0-1.85-.109"></path> </svg></button>
+                <button class="ql-list" value="bullet" title="Daftar Poin" type="button"><svg viewBox="0 0 18 18"> <line class="ql-stroke" x1="6" x2="15" y1="4" y2="4"></line> <line class="ql-stroke" x1="6" x2="15" y1="9" y2="9"></line> <line class="ql-stroke" x1="6" x2="15" y1="14" y2="14"></line> <line class="ql-stroke" x1="3" x2="3" y1="4" y2="4"></line> <line class="ql-stroke" x1="3" x2="3" y1="9" y2="9"></line> <line class="ql-stroke" x1="3" x2="3" y1="14" y2="14"></line> </svg></button>
+                <button class="ql-formula" title="Sisipkan Rumus Matematika (KaTeX)" type="button"><svg viewBox="0 0 18 18"> <path class="ql-fill" d="M11.759,2.482a2.561,2.561,0,0,0-3.53.607A7.656,7.656,0,0,0,6.8,6.2C6.109,9.188,5.275,14.677,4.15,14.927a1.545,1.545,0,0,0-1.3-.933A0.922,0.922,0,0,0,2,15.036S1.954,16,4.119,16s3.091-2.691,3.7-5.553c0.177-.826.36-1.726,0.554-2.6L8.775,6.2c0.381-1.421.807-2.521,1.306-2.676a1.014,1.014,0,0,0,1.02.56A0.966,0.966,0,0,0,11.759,2.482Z"></path> <rect class="ql-fill" height="1.6" rx="0.8" ry="0.8" width="5" x="5.15" y="6.2"></rect> <path class="ql-fill" d="M13.663,12.027a1.662,1.662,0,0,1,.266-0.276q0.193,0.069.456,0.138a2.1,2.1,0,0,0,.535.069,1.075,1.075,0,0,0,.767-0.3,1.044,1.044,0,0,0,.314-0.8,0.84,0.84,0,0,0-.238-0.619,0.8,0.8,0,0,0-.594-0.239,1.154,1.154,0,0,0-.781.3,4.607,4.607,0,0,0-.781,1q-0.091.15-.218,0.346l-0.246.38c-0.068-.288-0.137-0.582-0.212-0.885-0.459-1.847-2.494-.984-2.941-0.8-0.482.2-.353,0.647-0.094,0.529a0.869,0.869,0,0,1,1.281.585c0.217,0.751.377,1.436,0.527,2.038a5.688,5.688,0,0,1-.362.467,2.69,2.69,0,0,1-.264.271q-0.221-.08-0.471-0.147a2.029,2.029,0,0,0-.522-0.066,1.079,1.079,0,0,0-.768.3A1.058,1.058,0,0,0,9,15.131a0.82,0.82,0,0,0,.832.852,1.134,1.134,0,0,0,.787-0.3,5.11,5.11,0,0,0,.776-0.993q0.141-.219.215-0.34c0.046-.076.122-0.194,0.223-0.346a2.786,2.786,0,0,0,.918,1.726,2.582,2.582,0,0,0,2.376-.185c0.317-.181.212-0.565,0-0.494A0.807,0.807,0,0,1,14.176,15a5.159,5.159,0,0,1-.913-2.446l0,0Q13.487,12.24,13.663,12.027Z"></path> </svg></button>
+                <button class="ql-clean" title="Hapus Format" type="button"><svg class="" viewBox="0 0 18 18"> <line class="ql-stroke" x1="5" x2="13" y1="3" y2="3"></line> <line class="ql-stroke" x1="6" x2="9.35" y1="12" y2="3"></line> <line class="ql-stroke" x1="11" x2="15" y1="11" y2="15"></line> <line class="ql-stroke" x1="15" x2="11" y1="11" y2="15"></line> <rect class="ql-fill" height="1" rx="0.5" ry="0.5" width="7" x="2" y="14"></rect> </svg></button>
+              </span>
+            </div>
+            <div id="quill-stimulus-editor" class="ql-container ql-snow"><div class="ql-editor" data-gramm="false" contenteditable="true" data-placeholder="Ketik atau tempel wacana / teks bacaan stimulus di sini (mendukung format paragraf &amp; rumus matematika KaTeX)..."><p>Sungai Bengawan Solo berperan penting sebagai sumber irigasi persawahan dan habitat ikan air tawar. </p><p>Pembuangan plastik sekali pakai dapat menurunkan kadar oksigen air. Siswa aktif melakukan gerakan pilah sampah dan menanam pohon di bantaran sungai.</p></div><div class="ql-clipboard" contenteditable="true" tabindex="-1"></div><div class="ql-tooltip ql-hidden"><a class="ql-preview" rel="noopener noreferrer" target="_blank" href="about:blank"></a><input type="text" data-formula="e=mc^2" data-link="https://quilljs.com" data-video="Embed URL"><a class="ql-action"></a><a class="ql-remove"></a></div></div>
+            <textarea name="stimulus_isi_wacana" id="hidden-stimulus-html" class="hidden">&lt;p&gt;Sungai Bengawan Solo berperan penting sebagai sumber irigasi persawahan dan habitat ikan air tawar. Pembuangan plastik sekali pakai dapat menurunkan kadar oksigen air. Siswa aktif melakukan gerakan pilah sampah dan menanam pohon di bantaran sungai.&lt;/p&gt;</textarea>
+          </div>
+          <div id="stimulus-preview-wrap" class="hidden items-center gap-3 bg-white p-2 rounded-lg border border-amber-200">
+            <img src="" alt="Preview Stimulus" onerror="this.style.display='none'" class="h-14 w-20 object-contain rounded border" style="display: none;">
+            <span class="text-[11px] text-slate-600 truncate">URL Aktif: </span>
+          </div>
+        </div>
+
+        <div class="space-y-1.5">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <label class="font-bold text-slate-700">Teks Pertanyaan Soal:</label>
+            <button type="button" onclick="CBT.insertKatexFraction()" class="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-300 font-bold text-[11px]">
+              ½ Sisipkan Pecahan (KaTeX)
+            </button>
+          </div>
+          <div id="quill-toolbar-pertanyaan" class="ql-toolbar ql-snow">
+            <span class="ql-formats">
+              <button class="ql-bold" title="Tebal (Bold)" type="button"><svg viewBox="0 0 18 18"> <path class="ql-stroke" d="M5,4H9.5A2.5,2.5,0,0,1,12,6.5v0A2.5,2.5,0,0,1,9.5,9H5A0,0,0,0,1,5,9V4A0,0,0,0,1,5,4Z"></path> <path class="ql-stroke" d="M5,9h5.5A2.5,2.5,0,0,1,13,11.5v0A2.5,2.5,0,0,1,10.5,14H5a0,0,0,0,1,0,0V9A0,0,0,0,1,5,9Z"></path> </svg></button>
+              <button class="ql-italic" title="Miring (Italic)" type="button"><svg viewBox="0 0 18 18"> <line class="ql-stroke" x1="7" x2="13" y1="4" y2="4"></line> <line class="ql-stroke" x1="5" x2="11" y1="14" y2="14"></line> <line class="ql-stroke" x1="8" x2="10" y1="14" y2="4"></line> </svg></button>
+              <button class="ql-underline" title="Garis Bawah (Underline)" type="button"><svg viewBox="0 0 18 18"> <path class="ql-stroke" d="M5,3V9a4.012,4.012,0,0,0,4,4H9a4.012,4.012,0,0,0,4-4V3"></path> <rect class="ql-fill" height="1" rx="0.5" ry="0.5" width="12" x="3" y="15"></rect> </svg></button>
+            </span>
+            <span class="ql-formats">
+              <button class="ql-align ql-active" value="" title="Rata Kiri" type="button"><svg viewBox="0 0 18 18"> <line class="ql-stroke" x1="3" x2="15" y1="9" y2="9"></line> <line class="ql-stroke" x1="3" x2="13" y1="14" y2="14"></line> <line class="ql-stroke" x1="3" x2="9" y1="4" y2="4"></line> </svg></button>
+              <button class="ql-align" value="center" title="Rata Tengah" type="button"><svg viewBox="0 0 18 18"> <line class="ql-stroke" x1="15" x2="3" y1="9" y2="9"></line> <line class="ql-stroke" x1="14" x2="4" y1="14" y2="14"></line> <line class="ql-stroke" x1="12" x2="6" y1="4" y2="4"></line> </svg></button>
+              <button class="ql-align" value="right" title="Rata Kanan" type="button"><svg viewBox="0 0 18 18"> <line class="ql-stroke" x1="15" x2="3" y1="9" y2="9"></line> <line class="ql-stroke" x1="15" x2="5" y1="14" y2="14"></line> <line class="ql-stroke" x1="15" x2="9" y1="4" y2="4"></line> </svg></button>
+              <button class="ql-align" value="justify" title="Rata Kanan-Kiri" type="button"><svg viewBox="0 0 18 18"> <line class="ql-stroke" x1="15" x2="3" y1="9" y2="9"></line> <line class="ql-stroke" x1="15" x2="3" y1="14" y2="14"></line> <line class="ql-stroke" x1="15" x2="3" y1="4" y2="4"></line> </svg></button>
+            </span>
+            <span class="ql-formats">
+              <button class="ql-list" value="ordered" title="Daftar Bernomor" type="button"><svg viewBox="0 0 18 18"> <line class="ql-stroke" x1="7" x2="15" y1="4" y2="4"></line> <line class="ql-stroke" x1="7" x2="15" y1="9" y2="9"></line> <line class="ql-stroke" x1="7" x2="15" y1="14" y2="14"></line> <line class="ql-stroke ql-thin" x1="2.5" x2="4.5" y1="5.5" y2="5.5"></line> <path class="ql-fill" d="M3.5,6A0.5,0.5,0,0,1,3,5.5V3.085l-0.276.138A0.5,0.5,0,0,1,2.053,3c-0.124-.247-0.023-0.324.224-0.447l1-.5A0.5,0.5,0,0,1,4,2.5v3A0.5,0.5,0,0,1,3.5,6Z"></path> <path class="ql-stroke ql-thin" d="M4.5,10.5h-2c0-.234,1.85-1.076,1.85-2.234A0.959,0.959,0,0,0,2.5,8.156"></path> <path class="ql-stroke ql-thin" d="M2.5,14.846a0.959,0.959,0,0,0,1.85-.109A0.7,0.7,0,0,0,3.75,14a0.688,0.688,0,0,0,.6-0.736,0.959,0.959,0,0,0-1.85-.109"></path> </svg></button>
+              <button class="ql-list" value="bullet" title="Daftar Poin" type="button"><svg viewBox="0 0 18 18"> <line class="ql-stroke" x1="6" x2="15" y1="4" y2="4"></line> <line class="ql-stroke" x1="6" x2="15" y1="9" y2="9"></line> <line class="ql-stroke" x1="6" x2="15" y1="14" y2="14"></line> <line class="ql-stroke" x1="3" x2="3" y1="4" y2="4"></line> <line class="ql-stroke" x1="3" x2="3" y1="9" y2="9"></line> <line class="ql-stroke" x1="3" x2="3" y1="14" y2="14"></line> </svg></button>
+              <button class="ql-formula" title="Sisipkan Rumus Matematika (KaTeX)" type="button"><svg viewBox="0 0 18 18"> <path class="ql-fill" d="M11.759,2.482a2.561,2.561,0,0,0-3.53.607A7.656,7.656,0,0,0,6.8,6.2C6.109,9.188,5.275,14.677,4.15,14.927a1.545,1.545,0,0,0-1.3-.933A0.922,0.922,0,0,0,2,15.036S1.954,16,4.119,16s3.091-2.691,3.7-5.553c0.177-.826.36-1.726,0.554-2.6L8.775,6.2c0.381-1.421.807-2.521,1.306-2.676a1.014,1.014,0,0,0,1.02.56A0.966,0.966,0,0,0,11.759,2.482Z"></path> <rect class="ql-fill" height="1.6" rx="0.8" ry="0.8" width="5" x="5.15" y="6.2"></rect> <path class="ql-fill" d="M13.663,12.027a1.662,1.662,0,0,1,.266-0.276q0.193,0.069.456,0.138a2.1,2.1,0,0,0,.535.069,1.075,1.075,0,0,0,.767-0.3,1.044,1.044,0,0,0,.314-0.8,0.84,0.84,0,0,0-.238-0.619,0.8,0.8,0,0,0-.594-0.239,1.154,1.154,0,0,0-.781.3,4.607,4.607,0,0,0-.781,1q-0.091.15-.218,0.346l-0.246.38c-0.068-.288-0.137-0.582-0.212-0.885-0.459-1.847-2.494-.984-2.941-0.8-0.482.2-.353,0.647-0.094,0.529a0.869,0.869,0,0,1,1.281.585c0.217,0.751.377,1.436,0.527,2.038a5.688,5.688,0,0,1-.362.467,2.69,2.69,0,0,1-.264.271q-0.221-.08-0.471-0.147a2.029,2.029,0,0,0-.522-0.066,1.079,1.079,0,0,0-.768.3A1.058,1.058,0,0,0,9,15.131a0.82,0.82,0,0,0,.832.852,1.134,1.134,0,0,0,.787-0.3,5.11,5.11,0,0,0,.776-0.993q0.141-.219.215-0.34c0.046-.076.122-0.194,0.223-0.346a2.786,2.786,0,0,0,.918,1.726,2.582,2.582,0,0,0,2.376-.185c0.317-.181.212-0.565,0-0.494A0.807,0.807,0,0,1,14.176,15a5.159,5.159,0,0,1-.913-2.446l0,0Q13.487,12.24,13.663,12.027Z"></path> </svg></button>
+              <button class="ql-clean" title="Hapus Format" type="button"><svg class="" viewBox="0 0 18 18"> <line class="ql-stroke" x1="5" x2="13" y1="3" y2="3"></line> <line class="ql-stroke" x1="6" x2="9.35" y1="12" y2="3"></line> <line class="ql-stroke" x1="11" x2="15" y1="11" y2="15"></line> <line class="ql-stroke" x1="15" x2="11" y1="11" y2="15"></line> <rect class="ql-fill" height="1" rx="0.5" ry="0.5" width="7" x="2" y="14"></rect> </svg></button>
+            </span>
+          </div>
+          <div id="quill-pertanyaan-editor" class="ql-container ql-snow"><div class="ql-editor" data-gramm="false" contenteditable="true" data-placeholder="Ketik pertanyaan soal di sini..."><p>Berdasarkan wacana di atas, apa manfaat utama Sungai Bengawan Solo bagi sektor pertanian warga sekitar?...</p></div><div class="ql-clipboard" contenteditable="true" tabindex="-1"></div><div class="ql-tooltip ql-hidden"><a class="ql-preview" rel="noopener noreferrer" target="_blank" href="about:blank"></a><input type="text" data-formula="e=mc^2" data-link="https://quilljs.com" data-video="Embed URL"><a class="ql-action"></a><a class="ql-remove"></a></div></div>
+          <textarea name="pertanyaan" id="hidden-pertanyaan-html" class="hidden">Berdasarkan wacana di atas, apa manfaat utama Sungai Bengawan Solo bagi sektor pertanian warga sekitar?</textarea>
+        </div>
+
+        <div id="box-PG-PGK" class="soal-type-box  grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <input name="opsi_a" value="Sumber irigasi persawahan" placeholder="Opsi A" class="px-3 py-1.5 rounded-lg border bg-white">
+          <input name="opsi_b" value="Tempat pembuangan limbah" placeholder="Opsi B" class="px-3 py-1.5 rounded-lg border bg-white">
+          <input name="opsi_c" value="Pembangkit listrik tenaga uap" placeholder="Opsi C" class="px-3 py-1.5 rounded-lg border bg-white">
+          <input name="opsi_d" value="Jalur kapal pesiar besar" placeholder="Opsi D" class="px-3 py-1.5 rounded-lg border bg-white">
+          <input name="opsi_e" value="" placeholder="Opsi E (Opsional)" class="px-3 py-1.5 rounded-lg border bg-white">
+          <span id="hint-pg-pgk" class="text-[11px] text-blue-700 self-center">Kunci PG: 1 huruf (misal: A)</span>
+        </div>
+
+        <div id="box-BS" class="soal-type-box hidden">
+          <textarea name="bs_pernyataan" rows="3" placeholder="Tulis 1 pernyataan per baris. Kunci: B,S atau B" class="w-full p-2 rounded-lg border bg-white"></textarea>
+        </div>
+
+        <div id="box-MJ" class="soal-type-box hidden grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <textarea name="mj_premis" rows="3" placeholder="Daftar Premis Kiri (1 per baris)" class="p-2 rounded-lg border bg-white"></textarea>
+          <textarea name="mj_target" rows="3" placeholder="Daftar Pasangan Kanan (1 per baris). Kunci format indeks: 0:0,1:1" class="p-2 rounded-lg border bg-white"></textarea>
+        </div>
+
+        <div id="box-ISIAN" class="soal-type-box hidden text-[11px] text-slate-600">
+          Pisahkan variasi kunci dengan tanda <code>|</code> (contoh: <code>Soekarno|Ir. Soekarno</code> atau pecahan <code>3/4</code>).
+        </div>
+
+        <div id="box-URAIAN" class="soal-type-box hidden">
+          <textarea name="pedoman_uraian" rows="2" placeholder="Pedoman penskoran uraian untuk acuan koreksi guru..." class="w-full p-2 rounded-lg border bg-white"></textarea>
+        </div>
+
+        <div class="flex flex-wrap gap-2 items-center">
+          <input name="kunci_jawaban" value="A" required="" placeholder="Kunci Jawaban (PG: A | PGK: A,C | BS: B,S | MJ: 0:0,1:1 | ISIAN: Kunci1|Kunci2)" class="px-3 py-2 rounded-lg border bg-white flex-1 font-bold">
+          <button type="submit" class="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow">
+            Simpan Perubahan Soal
+          </button>
+        </div>
+      </form>
+
+      <div id="bank-soal-live-preview" class="mt-4">
+    <div class="p-4 rounded-xl border border-amber-400 ring-1 ring-amber-300 bg-white space-y-2 text-xs shadow-xs">
+      <div class="flex flex-wrap items-start justify-between gap-2">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="px-2.5 py-0.5 rounded bg-blue-700 text-white font-bold">Pratinjau Soal No. 1</span>
+          <span class="px-2 py-0.5 rounded bg-slate-100 font-bold">PG</span>
+          <span class="text-slate-500">Bobot: <strong>2</strong></span>
+          <span class="text-emerald-700 font-bold">Kunci: A</span>
+          <span class="px-2 py-0.5 rounded bg-amber-100 text-amber-900 font-bold text-[10px]">● Pratinjau Langsung (Belum Disimpan)</span>
+        </div>
+        <button type="button" onclick="CBT.deleteSoal('q-1')" class="px-2.5 py-1 rounded bg-red-50 hover:bg-red-100 text-red-700 font-bold shrink-0">Hapus Soal Ini</button>
+      </div>
+
+      
+        <div class="p-3 rounded-lg bg-[#FFFDF7] border border-amber-300 space-y-1.5">
+          <div class="flex flex-wrap items-center justify-between gap-1 text-[11px]">
+            <strong class="text-amber-950">📄 Stimulus #1: Menjaga Ekosistem Sungai Bengawan Solo</strong>
+            
+          </div>
+          
+          <div class="text-slate-700 text-[11px] leading-relaxed"><div class="cbt-rich-content ql-editor"><p>Sungai Bengawan Solo berperan penting sebagai sumber irigasi persawahan dan habitat ikan air tawar. </p><p>Pembuangan plastik sekali pakai dapat menurunkan kadar oksigen air. Siswa aktif melakukan gerakan pilah sampah dan menanam pohon di bantaran sungai.</p></div></div>
+        </div>
+      
+
+      <div class="text-slate-900 font-semibold"><div class="cbt-rich-content ql-editor"><p>Berdasarkan wacana di atas, apa manfaat utama Sungai Bengawan Solo bagi sektor pertanian warga sekitar?...</p></div></div>
+      
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 mt-2">
+          <div class="px-2.5 py-1 rounded border text-[11px] flex items-start gap-1 bg-emerald-50 border-emerald-300 text-emerald-900 font-bold">
+              <strong>A.</strong> <span class="flex-1"><div class="cbt-rich-content ql-editor">Sumber irigasi persawahan</div></span> <span>✓</span>
+            </div><div class="px-2.5 py-1 rounded border text-[11px] flex items-start gap-1 bg-slate-50 border-slate-200 text-slate-700">
+              <strong>B.</strong> <span class="flex-1"><div class="cbt-rich-content ql-editor">Tempat pembuangan limbah</div></span> 
+            </div><div class="px-2.5 py-1 rounded border text-[11px] flex items-start gap-1 bg-slate-50 border-slate-200 text-slate-700">
+              <strong>C.</strong> <span class="flex-1"><div class="cbt-rich-content ql-editor">Pembangkit listrik tenaga uap</div></span> 
+            </div><div class="px-2.5 py-1 rounded border text-[11px] flex items-start gap-1 bg-slate-50 border-slate-200 text-slate-700">
+              <strong>D.</strong> <span class="flex-1"><div class="cbt-rich-content ql-editor">Jalur kapal pesiar besar</div></span> 
+            </div>
+        </div>
+    </div>
+  </div>
+    </div>
+  
+        </div>
+      </main>
+    </div>
+  </div>
   <div id="cbt-toast-container" class="no-print fixed top-20 right-4 z-[999999] pointer-events-none"></div>
 </div>
 
@@ -7627,7 +7991,7 @@ function renderBankSoalSection(isPenelaah = false) {
         </div>
       </div>
 
-      <form id="form-bank-soal" onsubmit="CBT.saveSoal(event)" class="${editingSoal ? 'bg-blue-50/60 border-blue-400 ring-2 ring-blue-200' : 'bg-emerald-50/40 border-emerald-400 ring-2 ring-emerald-100'} border rounded-xl p-4 space-y-3 text-xs transition">
+      <form id="form-bank-soal" onsubmit="CBT.saveSoal(event)" oninput="CBT.updateSoalPreview()" onchange="CBT.updateSoalPreview()" class="${editingSoal ? 'bg-blue-50/60 border-blue-400 ring-2 ring-blue-200' : 'bg-emerald-50/40 border-emerald-400 ring-2 ring-emerald-100'} border rounded-xl p-4 space-y-3 text-xs transition">
         <div class="flex flex-wrap items-center justify-between gap-2">
           <h3 class="font-extrabold ${editingSoal ? 'text-blue-900' : 'text-emerald-900'}">
             ${editingSoal ? `✏️ Menampilkan &amp; Edit Soal Nomor ${editingSoal.nomor_urut} (${esc(editingSoal.jenis_soal)})` : `➕ Mode Tambah Soal Baru Nomor ${activeNomor} (Mendukung 6 Tipe)`}
@@ -7781,87 +8145,190 @@ function renderBankSoalSection(isPenelaah = false) {
         </div>
       </form>
 
-      <div class="mt-4">
-        ${(() => {
-          if (!editingSoal) {
-            return `
-              <div class="p-4 rounded-xl border border-dashed border-slate-300 bg-slate-50/80 text-center text-xs text-slate-500">
-                Mode input <strong>Soal Nomor ${activeNomor}</strong> belum tersimpan. Isi form di atas lalu klik <strong>Simpan Soal Baru</strong>.
-              </div>
-            `;
-          }
-          const q = editingSoal;
-          const stim = q.stimulus_id ? STATE.stimulusList.find(st => st.id === q.stimulus_id) : null;
-          const jns = (q.jenis_soal || 'PG').toUpperCase();
-          let detailOpsiHtml = '';
-
-          if (jns === 'PG' || jns === 'PGK') {
-            const keys = Object.keys(q.opsi_jawaban || {}).filter(k => q.opsi_jawaban[k]);
-            const kunciList = String(q.kunci_jawaban || '').split(',').map(x => x.trim().toUpperCase());
-            detailOpsiHtml = `
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 mt-2">
-                ${keys.map(k => {
-                  const isTrue = kunciList.includes(k.toUpperCase());
-                  return `<div class="px-2.5 py-1 rounded border text-[11px] flex items-start gap-1 ${isTrue ? 'bg-emerald-50 border-emerald-300 text-emerald-900 font-bold' : 'bg-slate-50 border-slate-200 text-slate-700'}">
-                    <strong>${esc(k)}.</strong> <span class="flex-1">${renderRichText(q.opsi_jawaban[k])}</span> ${isTrue ? '<span>✓</span>' : ''}
-                  </div>`;
-                }).join('')}
-              </div>`;
-          } else if (jns === 'BS') {
-            const list = (q.opsi_jawaban?.pernyataan && q.opsi_jawaban.pernyataan.length > 0)
-              ? q.opsi_jawaban.pernyataan
-              : ["Pernyataan tunggal sesuai soal di atas"];
-            const kunciList = String(q.kunci_jawaban || '').split(',').map(x => x.trim().toUpperCase());
-            detailOpsiHtml = `
-              <div class="mt-2 space-y-1">
-                ${list.map((st, idx) => `<div class="px-2.5 py-1 rounded bg-slate-50 border border-slate-200 text-[11px] flex justify-between gap-2">
-                  <span>${idx + 1}. ${renderRichText(st)}</span>
-                  <strong class="text-blue-700 shrink-0">${kunciList[idx] === 'B' ? 'Benar' : (kunciList[idx] === 'S' ? 'Salah' : esc(kunciList[idx] || '-'))}</strong>
-                </div>`).join('')}
-              </div>`;
-          } else if (jns === 'MJ') {
-            const premis = q.opsi_jawaban?.premis || [];
-            const target = q.opsi_jawaban?.target || [];
-            detailOpsiHtml = `
-              <div class="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px]">
-                <div class="p-2 rounded bg-slate-50 border border-slate-200"><strong>Premis:</strong> ${premis.map((p, i) => `${i}:${esc(p)}`).join(' | ')}</div>
-                <div class="p-2 rounded bg-slate-50 border border-slate-200"><strong>Pasangan:</strong> ${target.map((tg, i) => `${i}:${esc(tg)}`).join(' | ')}</div>
-              </div>`;
-          } else if (jns === 'URAIAN' && q.opsi_jawaban?.pedoman) {
-            detailOpsiHtml = `<div class="mt-2 px-2.5 py-1.5 rounded bg-amber-50 border border-amber-200 text-[11px] text-amber-950"><strong>Pedoman Penskoran:</strong> ${esc(q.opsi_jawaban.pedoman)}</div>`;
-          }
-
-          return `
-            <div class="p-4 rounded-xl border border-blue-500 ring-1 ring-blue-300 bg-white space-y-2 text-xs shadow-xs">
-              <div class="flex flex-wrap items-start justify-between gap-2">
-                <div class="flex flex-wrap items-center gap-2">
-                  <span class="px-2.5 py-0.5 rounded bg-blue-700 text-white font-bold">Pratinjau Soal No. ${q.nomor_urut}</span>
-                  <span class="px-2 py-0.5 rounded bg-slate-100 font-bold">${q.jenis_soal}</span>
-                  <span class="text-slate-500">Bobot: <strong>${q.bobot}</strong></span>
-                  <span class="text-emerald-700 font-bold">Kunci: ${esc(q.kunci_jawaban)}</span>
-                </div>
-                <button type="button" onclick="CBT.deleteSoal('${q.id}')" class="px-2.5 py-1 rounded bg-red-50 hover:bg-red-100 text-red-700 font-bold shrink-0">Hapus Soal Ini</button>
-              </div>
-
-              ${stim ? `
-                <div class="p-3 rounded-lg bg-[#FFFDF7] border border-amber-300 space-y-1.5">
-                  <div class="flex flex-wrap items-center justify-between gap-1 text-[11px]">
-                    <strong class="text-amber-950">📄 Stimulus #${stim.urutan}: ${esc(stim.judul)}</strong>
-                    ${stim.gambar_url ? `<span class="text-blue-700 truncate max-w-xs">URL: ${esc(stim.gambar_url)}</span>` : ''}
-                  </div>
-                  ${stim.gambar_url ? `<img src="${esc(stim.gambar_url)}" onerror="this.style.display='none'" alt="Gambar Stimulus" class="max-h-36 rounded border border-amber-200 bg-white p-1" />` : ''}
-                  ${stim.isi_wacana ? `<div class="text-slate-700 text-[11px] leading-relaxed">${renderRichText(stim.isi_wacana)}</div>` : ''}
-                </div>
-              ` : ''}
-
-              <div class="text-slate-900 font-semibold">${renderRichText(q.pertanyaan)}</div>
-              ${detailOpsiHtml}
-            </div>
-          `;
-        })()}
+      <div id="bank-soal-live-preview" class="mt-4">
+        ${buildBankSoalPreviewHtml(
+          editingSoal,
+          editingSoal?.stimulus_id ? STATE.stimulusList.find(st => st.id === editingSoal.stimulus_id) : null,
+          false,
+          activeNomor
+        )}
       </div>
     </div>
   `;
+}
+
+function buildBankSoalPreviewHtml(q, stim = null, isLiveDraft = false, fallbackNomor = 1) {
+  if (!q) {
+    return `
+      <div class="p-4 rounded-xl border border-dashed border-slate-300 bg-slate-50/80 text-center text-xs text-slate-500">
+        Mode input <strong>Soal Nomor ${fallbackNomor}</strong> belum tersimpan. Ketik pada form di atas untuk melihat pratinjau langsung, lalu klik <strong>Simpan Soal Baru</strong>.
+      </div>
+    `;
+  }
+
+  const jns = String(q.jenis_soal || 'PG').toUpperCase();
+  let detailOpsiHtml = '';
+
+  if (jns === 'PG' || jns === 'PGK') {
+    const keys = Object.keys(q.opsi_jawaban || {}).filter(k => String(q.opsi_jawaban[k] ?? '').trim() !== '');
+    const kunciRaw = String(q.kunci_jawaban || '').trim();
+    const kunciTokens = (kunciRaw.includes(',') || kunciRaw.includes(';') || kunciRaw.includes(' '))
+      ? kunciRaw.split(/[,;\s]+/)
+      : (jns === 'PGK' ? kunciRaw.split('') : [kunciRaw]);
+    const kunciList = kunciTokens.map(x => x.trim().toUpperCase()).filter(Boolean);
+    detailOpsiHtml = keys.length === 0
+      ? `<div class="mt-2 text-[11px] text-slate-400 italic">Belum ada opsi jawaban yang diisi.</div>`
+      : `
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 mt-2">
+          ${keys.map(k => {
+            const isTrue = kunciList.includes(k.toUpperCase());
+            return `<div class="px-2.5 py-1 rounded border text-[11px] flex items-start gap-1 ${isTrue ? 'bg-emerald-50 border-emerald-300 text-emerald-900 font-bold' : 'bg-slate-50 border-slate-200 text-slate-700'}">
+              <strong>${esc(k)}.</strong> <span class="flex-1">${renderRichText(q.opsi_jawaban[k])}</span> ${isTrue ? '<span>✓</span>' : ''}
+            </div>`;
+          }).join('')}
+        </div>`;
+  } else if (jns === 'BS') {
+    const list = (q.opsi_jawaban?.pernyataan && q.opsi_jawaban.pernyataan.length > 0)
+      ? q.opsi_jawaban.pernyataan
+      : ["Pernyataan tunggal sesuai soal di atas"];
+    const kunciList = String(q.kunci_jawaban || '').split(/[,\s]+/).map(x => x.trim().toUpperCase()).filter(Boolean);
+    detailOpsiHtml = `
+      <div class="mt-2 space-y-1">
+        ${list.map((st, idx) => `<div class="px-2.5 py-1 rounded bg-slate-50 border border-slate-200 text-[11px] flex justify-between gap-2">
+          <span>${idx + 1}. ${renderRichText(st)}</span>
+          <strong class="text-blue-700 shrink-0">${kunciList[idx] === 'B' ? 'Benar' : (kunciList[idx] === 'S' ? 'Salah' : esc(kunciList[idx] || '-'))}</strong>
+        </div>`).join('')}
+      </div>`;
+  } else if (jns === 'MJ') {
+    const premis = q.opsi_jawaban?.premis || [];
+    const target = q.opsi_jawaban?.target || [];
+    detailOpsiHtml = `
+      <div class="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px]">
+        <div class="p-2 rounded bg-slate-50 border border-slate-200"><strong>Premis:</strong> ${premis.length ? premis.map((p, i) => `${i}:${esc(p)}`).join(' | ') : '-'}</div>
+        <div class="p-2 rounded bg-slate-50 border border-slate-200"><strong>Pasangan:</strong> ${target.length ? target.map((tg, i) => `${i}:${esc(tg)}`).join(' | ') : '-'}</div>
+      </div>`;
+  } else if (jns === 'URAIAN' && q.opsi_jawaban?.pedoman) {
+    detailOpsiHtml = `<div class="mt-2 px-2.5 py-1.5 rounded bg-amber-50 border border-amber-200 text-[11px] text-amber-950"><strong>Pedoman Penskoran:</strong> ${esc(q.opsi_jawaban.pedoman)}</div>`;
+  }
+
+  const hasStimContent = Boolean(
+    stim && (
+      String(stim.judul || '').trim() ||
+      String(stim.gambar_url || '').trim() ||
+      String(stim.isi_wacana || '').replace(/<[^>]*>/g, '').trim() ||
+      String(stim.isi_wacana || '').includes('ql-formula')
+    )
+  );
+
+  return `
+    <div class="p-4 rounded-xl border ${isLiveDraft ? 'border-amber-400 ring-1 ring-amber-300' : 'border-blue-500 ring-1 ring-blue-300'} bg-white space-y-2 text-xs shadow-xs">
+      <div class="flex flex-wrap items-start justify-between gap-2">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="px-2.5 py-0.5 rounded bg-blue-700 text-white font-bold">Pratinjau Soal No. ${esc(q.nomor_urut)}</span>
+          <span class="px-2 py-0.5 rounded bg-slate-100 font-bold">${esc(jns)}</span>
+          <span class="text-slate-500">Bobot: <strong>${esc(q.bobot)}</strong></span>
+          <span class="text-emerald-700 font-bold">Kunci: ${esc(q.kunci_jawaban || '-')}</span>
+          ${isLiveDraft ? `<span class="px-2 py-0.5 rounded bg-amber-100 text-amber-900 font-bold text-[10px]">● Pratinjau Langsung (Belum Disimpan)</span>` : ''}
+        </div>
+        ${q.id ? `<button type="button" onclick="CBT.deleteSoal('${q.id}')" class="px-2.5 py-1 rounded bg-red-50 hover:bg-red-100 text-red-700 font-bold shrink-0">Hapus Soal Ini</button>` : ''}
+      </div>
+
+      ${hasStimContent ? `
+        <div class="p-3 rounded-lg bg-[#FFFDF7] border border-amber-300 space-y-1.5">
+          <div class="flex flex-wrap items-center justify-between gap-1 text-[11px]">
+            <strong class="text-amber-950">📄 Stimulus${stim.urutan ? ` #${stim.urutan}` : ''}: ${esc(stim.judul || 'Tanpa Judul')}</strong>
+            ${stim.gambar_url ? `<span class="text-blue-700 truncate max-w-xs">URL: ${esc(stim.gambar_url)}</span>` : ''}
+          </div>
+          ${stim.gambar_url ? `<img src="${esc(stim.gambar_url)}" onerror="this.style.display='none'" alt="Gambar Stimulus" class="max-h-36 rounded border border-amber-200 bg-white p-1" />` : ''}
+          ${stim.isi_wacana ? `<div class="text-slate-700 text-[11px] leading-relaxed">${renderRichText(stim.isi_wacana)}</div>` : ''}
+        </div>
+      ` : ''}
+
+      <div class="text-slate-900 font-semibold">${q.pertanyaan ? renderRichText(q.pertanyaan) : '<span class="text-slate-400 italic">(Teks pertanyaan belum diisi)</span>'}</div>
+      ${detailOpsiHtml}
+    </div>
+  `;
+}
+
+function updateBankSoalLivePreview() {
+  const form = document.getElementById('form-bank-soal');
+  const previewEl = document.getElementById('bank-soal-live-preview');
+  if (!form || !previewEl) return;
+
+  const jenis = String(form.querySelector('[name="jenis_soal"]')?.value || 'PG').toUpperCase();
+  const nomorUrut = Number(form.querySelector('[name="nomor_urut"]')?.value) || (STATE.newSoalNomor || 1);
+  const bobotRaw = form.querySelector('[name="bobot"]')?.value;
+  const bobot = bobotRaw !== '' && bobotRaw !== undefined ? bobotRaw : 1;
+  const kunci = String(form.querySelector('[name="kunci_jawaban"]')?.value || '').trim();
+
+  let pertanyaanHtml = '';
+  if (activeQuillPertanyaan) {
+    const plain = activeQuillPertanyaan.getText().trim();
+    const hasRich = Boolean(activeQuillPertanyaan.root.querySelector('.ql-formula, img, table'));
+    pertanyaanHtml = (plain || hasRich) ? activeQuillPertanyaan.root.innerHTML : '';
+  } else {
+    pertanyaanHtml = String(form.querySelector('[name="pertanyaan"]')?.value || '').trim();
+  }
+
+  let opsi = {};
+  if (jenis === 'PG' || jenis === 'PGK') {
+    const oA = String(form.querySelector('[name="opsi_a"]')?.value || '').trim();
+    const oB = String(form.querySelector('[name="opsi_b"]')?.value || '').trim();
+    const oC = String(form.querySelector('[name="opsi_c"]')?.value || '').trim();
+    const oD = String(form.querySelector('[name="opsi_d"]')?.value || '').trim();
+    const oE = String(form.querySelector('[name="opsi_e"]')?.value || '').trim();
+    if (oA) opsi.A = oA;
+    if (oB) opsi.B = oB;
+    if (oC) opsi.C = oC;
+    if (oD) opsi.D = oD;
+    if (oE) opsi.E = oE;
+  } else if (jenis === 'BS') {
+    const rawBs = String(form.querySelector('[name="bs_pernyataan"]')?.value || '');
+    opsi = { pernyataan: rawBs.split('\n').map(x => x.trim()).filter(Boolean) };
+  } else if (jenis === 'MJ') {
+    const rawPremis = String(form.querySelector('[name="mj_premis"]')?.value || '');
+    const rawTarget = String(form.querySelector('[name="mj_target"]')?.value || '');
+    opsi = {
+      premis: rawPremis.split('\n').map(x => x.trim()).filter(Boolean),
+      target: rawTarget.split('\n').map(x => x.trim()).filter(Boolean)
+    };
+  } else if (jenis === 'URAIAN') {
+    opsi = { pedoman: String(form.querySelector('[name="pedoman_uraian"]')?.value || '').trim() };
+  }
+
+  const rawStimId = String(form.querySelector('[name="stimulus_id"]')?.value || '');
+  const stimJudul = String(form.querySelector('[name="stimulus_judul"]')?.value || '').trim();
+  const stimImgUrl = String(form.querySelector('[name="stimulus_gambar_url"]')?.value || '').trim();
+  let stimWacana = '';
+  if (activeQuillStimulus) {
+    const plainStim = activeQuillStimulus.getText().trim();
+    const hasRichStim = Boolean(activeQuillStimulus.root.querySelector('.ql-formula, img, table'));
+    stimWacana = (plainStim || hasRichStim) ? activeQuillStimulus.root.innerHTML : '';
+  } else {
+    stimWacana = String(form.querySelector('[name="stimulus_isi_wacana"]')?.value || '').trim();
+  }
+
+  const existingStim = (rawStimId && rawStimId !== '__NEW__')
+    ? STATE.stimulusList.find(st => String(st.id) === rawStimId)
+    : null;
+  const draftStim = (stimJudul || stimImgUrl || stimWacana) ? {
+    urutan: existingStim ? existingStim.urutan : (STATE.stimulusList.length + 1),
+    judul: stimJudul,
+    gambar_url: stimImgUrl,
+    isi_wacana: stimWacana
+  } : null;
+
+  const draftSoal = {
+    id: STATE.editSoalId || null,
+    nomor_urut: nomorUrut,
+    jenis_soal: jenis,
+    bobot,
+    kunci_jawaban: kunci,
+    pertanyaan: pertanyaanHtml,
+    opsi_jawaban: opsi
+  };
+
+  previewEl.innerHTML = buildBankSoalPreviewHtml(draftSoal, draftStim, true, nomorUrut);
 }
 
 function renderCetakKartuSection() {
@@ -8384,8 +8851,9 @@ function initQuillPertanyaanEditor() {
   if (hiddenEl && hiddenEl.value) {
     activeQuillPertanyaan.clipboard.dangerouslyPasteHTML(hiddenEl.value);
   }
-  activeQuillPertanyaan.on('text-change', () => {
+  activeQuillPertanyaan.on('text-change', (delta, oldDelta, source) => {
     if (hiddenEl) hiddenEl.value = activeQuillPertanyaan.root.innerHTML;
+    if (source === 'user') updateBankSoalLivePreview();
   });
 }
 
@@ -8405,8 +8873,9 @@ function initQuillStimulusEditor() {
   if (hiddenEl && hiddenEl.value) {
     activeQuillStimulus.clipboard.dangerouslyPasteHTML(hiddenEl.value);
   }
-  activeQuillStimulus.on('text-change', () => {
+  activeQuillStimulus.on('text-change', (delta, oldDelta, source) => {
     if (hiddenEl) hiddenEl.value = activeQuillStimulus.root.innerHTML;
+    if (source === 'user') updateBankSoalLivePreview();
   });
 }
 
@@ -8769,7 +9238,9 @@ window.CBT = {
     } else {
       document.getElementById(`box-${jenis}`)?.classList.remove('hidden');
     }
+    updateBankSoalLivePreview();
   },
+  updateSoalPreview: updateBankSoalLivePreview,
   saveSoal,
   addSoal: saveSoal,
   onNomorUrutChange: (val) => {
@@ -8814,22 +9285,25 @@ window.CBT = {
         : (stimId === '__NEW__' ? 'Membuat Stimulus Baru' : 'Opsional (kosongkan jika soal tanpa stimulus)');
     }
     window.CBT.onStimulusUrlInput(stim?.gambar_url || '');
+    updateBankSoalLivePreview();
   },
   onStimulusUrlInput: (urlVal) => {
     const previewWrap = document.getElementById('stimulus-preview-wrap');
-    if (!previewWrap) return;
-    const trimmed = String(urlVal || '').trim();
-    if (trimmed) {
-      previewWrap.classList.remove('hidden');
-      previewWrap.classList.add('flex');
-      const img = previewWrap.querySelector('img');
-      const span = previewWrap.querySelector('span');
-      if (img) { img.style.display = ''; img.src = trimmed; }
-      if (span) span.textContent = `URL Aktif: ${trimmed}`;
-    } else {
-      previewWrap.classList.add('hidden');
-      previewWrap.classList.remove('flex');
+    if (previewWrap) {
+      const trimmed = String(urlVal || '').trim();
+      if (trimmed) {
+        previewWrap.classList.remove('hidden');
+        previewWrap.classList.add('flex');
+        const img = previewWrap.querySelector('img');
+        const span = previewWrap.querySelector('span');
+        if (img) { img.style.display = ''; img.src = trimmed; }
+        if (span) span.textContent = `URL Aktif: ${trimmed}`;
+      } else {
+        previewWrap.classList.add('hidden');
+        previewWrap.classList.remove('flex');
+      }
     }
+    updateBankSoalLivePreview();
   },
   startEditSoal: (id) => {
     STATE.editSoalId = id;
@@ -8961,5 +9435,5 @@ window.CBT = {
   render();
 })();
 </script>
-</body>
-</html>
+
+</body></html>
