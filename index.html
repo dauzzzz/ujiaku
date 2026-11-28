@@ -774,7 +774,9 @@ const MOCK_DB = IS_PREVIEW ? {
       app_badge: "PUSDATIN • ANBK",
       app_subtitle: "Sistem Asesmen Berbasis Komputer",
       token_aktif: "SAS2026",
-      tanggal_ujian: "2026-11-25"
+      tanggal_ujian: "2026-11-25",
+      anticheat_enabled: true,
+      anticheat_max_pelanggaran: 3
     },
     {
       id: "sek-2",
@@ -785,7 +787,9 @@ const MOCK_DB = IS_PREVIEW ? {
       app_badge: "PUSDATIN • ANBK",
       app_subtitle: "Sistem Asesmen Berbasis Komputer",
       token_aktif: "SKMJ26",
-      tanggal_ujian: "2026-11-25"
+      tanggal_ujian: "2026-11-25",
+      anticheat_enabled: true,
+      anticheat_max_pelanggaran: 3
     }
   ],
   ruang_ujian: [
@@ -1270,8 +1274,100 @@ function getSekolahById(id) {
     app_subtitle: 'Sistem Asesmen Berbasis Komputer',
     token_aktif: '',
     tanggal_ujian: getWIBNow().toISOString().slice(0, 10),
+    anticheat_enabled: true,
+    anticheat_max_pelanggaran: 3,
     ...found
   };
+}
+
+function getAntiCheatConfig(schoolId = null) {
+  const sid = schoolId || getEffectiveSchoolFilter();
+  const targetSek = (sid && sid !== 'ALL')
+    ? STATE.sekolahList.find(s => String(s.id) === String(sid))
+    : (STATE.sekolahList[0] || STATE.sekolah);
+
+  let enabled = true;
+  let max = 3;
+
+  if (targetSek) {
+    if (targetSek.anticheat_enabled !== undefined && targetSek.anticheat_enabled !== null) {
+      enabled = Boolean(targetSek.anticheat_enabled);
+    }
+    if (Number(targetSek.anticheat_max_pelanggaran) >= 1) {
+      max = Math.min(20, Math.max(1, Math.floor(Number(targetSek.anticheat_max_pelanggaran))));
+    }
+  }
+
+  try {
+    const raw = localStorage.getItem(`cbt_anticheat_cfg_${sid || 'ALL'}`);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (targetSek && targetSek.anticheat_enabled === undefined && typeof parsed.enabled === 'boolean') {
+        enabled = parsed.enabled;
+      }
+      if (targetSek && !targetSek.anticheat_max_pelanggaran && Number(parsed.max) >= 1) {
+        max = Math.min(20, Math.max(1, Math.floor(Number(parsed.max))));
+      }
+    }
+  } catch (_) {}
+
+  return { enabled, max };
+}
+
+async function saveAntiCheatConfig(enabled, maxPelanggaran, schoolId = null) {
+  const sid = schoolId || getEffectiveSchoolFilter();
+  const cleanEnabled = Boolean(enabled);
+  const cleanMax = Math.min(20, Math.max(1, Math.floor(Number(maxPelanggaran) || 3)));
+  const targets = (sid && sid !== 'ALL')
+    ? STATE.sekolahList.filter(s => String(s.id) === String(sid))
+    : [...STATE.sekolahList];
+
+  targets.forEach(sk => {
+    sk.anticheat_enabled = cleanEnabled;
+    sk.anticheat_max_pelanggaran = cleanMax;
+    try {
+      localStorage.setItem(`cbt_anticheat_cfg_${sk.id}`, JSON.stringify({ enabled: cleanEnabled, max: cleanMax }));
+    } catch (_) {}
+  });
+  try {
+    localStorage.setItem(`cbt_anticheat_cfg_${sid || 'ALL'}`, JSON.stringify({ enabled: cleanEnabled, max: cleanMax }));
+  } catch (_) {}
+
+  render();
+
+  let schemaMissing = false;
+  try {
+    for (const sk of targets) {
+      if (IS_PREVIEW) {
+        const idx = (MOCK_DB.pengaturan_sekolah || []).findIndex(x => String(x.id) === String(sk.id));
+        if (idx >= 0) {
+          MOCK_DB.pengaturan_sekolah[idx].anticheat_enabled = cleanEnabled;
+          MOCK_DB.pengaturan_sekolah[idx].anticheat_max_pelanggaran = cleanMax;
+        }
+      } else if (sb) {
+        const { error } = await sb.from('pengaturan_sekolah')
+          .update({ anticheat_enabled: cleanEnabled, anticheat_max_pelanggaran: cleanMax })
+          .eq('id', sk.id);
+        if (error) {
+          const msg = String(error.message || '');
+          if (msg.includes('anticheat_enabled') || msg.includes('anticheat_max_pelanggaran') || msg.includes('schema cache')) {
+            schemaMissing = true;
+            break;
+          }
+          throw error;
+        }
+      }
+    }
+    if (schemaMissing) {
+      notify(`Anti-Cheat ${cleanEnabled ? `ON (maks ${cleanMax}x)` : 'OFF'} tersimpan lokal. Jalankan skrip Update SQL agar sinkron ke semua perangkat siswa.`, "info");
+    } else {
+      notify(cleanEnabled
+        ? `Anti-Cheat AKTIF (Batas maksimal keluar ujian: ${cleanMax}x).`
+        : `Anti-Cheat NONAKTIF (Siswa tidak terkunci otomatis saat keluar tab).`, "success");
+    }
+  } catch (err) {
+    notify("Gagal menyimpan pengaturan Anti-Cheat: " + err.message, "error");
+  }
 }
 
 function getAppBranding() {
@@ -1644,17 +1740,30 @@ async function dbDelete(table, ids, enforceSchoolId = null) {
 async function loadInitialData() {
   try {
     const sekolahArr = await dbSelect('pengaturan_sekolah', 'nama_sekolah', null, '*');
-    STATE.sekolahList = sekolahArr.map(sk => ({
-      npsn: '-',
-      kecamatan: '',
-      logo_url: '',
-      portal_logo_url: '',
-      app_badge: 'PUSDATIN • ANBK',
-      app_subtitle: 'Sistem Asesmen Berbasis Komputer',
-      token_aktif: '',
-      tanggal_ujian: getWIBNow().toISOString().slice(0, 10),
-      ...sk
-    }));
+    STATE.sekolahList = sekolahArr.map(sk => {
+      let localAc = null;
+      try {
+        const rawAc = localStorage.getItem(`cbt_anticheat_cfg_${sk.id}`);
+        if (rawAc) localAc = JSON.parse(rawAc);
+      } catch (_) {}
+      return {
+        npsn: '-',
+        kecamatan: '',
+        logo_url: '',
+        portal_logo_url: '',
+        app_badge: 'PUSDATIN • ANBK',
+        app_subtitle: 'Sistem Asesmen Berbasis Komputer',
+        token_aktif: '',
+        tanggal_ujian: getWIBNow().toISOString().slice(0, 10),
+        ...sk,
+        anticheat_enabled: (sk.anticheat_enabled !== undefined && sk.anticheat_enabled !== null)
+          ? Boolean(sk.anticheat_enabled)
+          : (localAc && typeof localAc.enabled === 'boolean' ? localAc.enabled : true),
+        anticheat_max_pelanggaran: Number(sk.anticheat_max_pelanggaran) >= 1
+          ? Math.floor(Number(sk.anticheat_max_pelanggaran))
+          : (localAc && Number(localAc.max) >= 1 ? Math.floor(Number(localAc.max)) : 3)
+      };
+    });
     const dbPortalLogo = STATE.sekolahList.find(sk => String(sk.portal_logo_url || '').trim())?.portal_logo_url;
     if (dbPortalLogo) {
       try { localStorage.setItem('cbt_portal_login_logo', String(dbPortalLogo).trim()); } catch (_) {}
@@ -3172,14 +3281,17 @@ async function executeSubmitExam(isAuto = false, autoReason = '') {
 
 async function recordExamViolation(reason) {
   if (STATE.role !== 'siswa' || STATE.siswaStep !== 'ujian' || !STATE.activeExamMapel) return;
+  const acCfg = getAntiCheatConfig(STATE.user?.sekolah_id);
+  if (!acCfg.enabled) return;
   if (STATE.antiCheatModal || STATE.busyKeys['violation-lock']) return;
 
   STATE.busyKeys['violation-lock'] = true;
   try {
+    const maxViol = acCfg.max || 3;
     STATE.violationCount = (Number(STATE.violationCount) || 0) + 1;
     STATE.antiCheatReason = reason;
     const jadwal = (STATE.jadwalList || []).find(j => String(j.mapel_id) === String(STATE.activeExamMapel.id));
-    const isLocked = STATE.violationCount >= 3;
+    const isLocked = STATE.violationCount >= maxViol;
 
     if (jadwal && jadwal.id) {
       const upd = {
@@ -3200,8 +3312,8 @@ async function recordExamViolation(reason) {
       STATE.antiCheatModal = false;
       render();
       showInfoModal(
-        "Akun Terkunci Otomatis (3x Pelanggaran)",
-        "Anda telah melanggar aturan layar ujian sebanyak 3 kali. Jawaban sementara Anda tetap tersimpan. Hubungi Proktor untuk membuka kunci (Reset Login)."
+        `Akun Terkunci Otomatis (${maxViol}x Pelanggaran)`,
+        `Anda telah melanggar aturan layar ujian sebanyak ${maxViol} kali. Jawaban sementara Anda tetap tersimpan. Hubungi Proktor untuk membuka kunci (Reset Login).`
       );
     } else {
       STATE.antiCheatModal = true;
@@ -3214,7 +3326,10 @@ async function recordExamViolation(reason) {
 
 document.addEventListener('visibilitychange', () => {
   if (document.hidden && STATE.role === 'siswa' && STATE.siswaStep === 'ujian') {
-    recordExamViolation("Sistem mendeteksi Anda berpindah tab atau meminimalkan browser.");
+    const acCfg = getAntiCheatConfig(STATE.user?.sekolah_id);
+    if (acCfg.enabled) {
+      recordExamViolation("Sistem mendeteksi Anda berpindah tab atau meminimalkan browser.");
+    }
   }
 });
 
@@ -4740,6 +4855,7 @@ function renderLoginScreen() {
 function renderSiswaPortal() {
   const s = STATE.user;
   const sek = getSekolahById(s.sekolah_id);
+  const acCfg = getAntiCheatConfig(s.sekolah_id);
   const ruang = STATE.ruang.find(r => r.id === s.ruang_id);
   const sesi = STATE.sesi.find(x => x.id === s.sesi_id);
 
@@ -4822,7 +4938,9 @@ function renderSiswaPortal() {
                   </div>
                 </div>
                 <p class="text-[11px] text-amber-900 bg-amber-50 border border-amber-200 p-3 rounded-xl mt-2">
-                  <strong>Perhatian:</strong> Dilarang berpindah tab atau keluar layar ujian selama pengerjaan. Pelanggaran 3x akan mengunci akun otomatis.
+                  ${acCfg.enabled
+                    ? `<strong>Perhatian:</strong> Dilarang berpindah tab atau keluar layar ujian selama pengerjaan. Pelanggaran <strong>${acCfg.max}x</strong> akan mengunci akun otomatis.`
+                    : `<strong>Informasi:</strong> Pengunci otomatis (Anti-Cheat) sedang dinonaktifkan oleh pengawas. Tetap fokus dan kerjakan ujian dengan jujur.`}
                 </p>
               </div>
             </div>
@@ -5001,7 +5119,7 @@ function renderSiswaPortal() {
               <div class="w-12 h-12 rounded-full bg-red-100 text-red-600 mx-auto flex items-center justify-center text-2xl font-extrabold mb-3">!</div>
               <h3 class="text-lg font-extrabold text-red-700">Peringatan Keamanan Ujian</h3>
               <p class="text-xs text-slate-600 mt-2 leading-relaxed">
-                ${esc(STATE.antiCheatReason || 'Sistem mendeteksi Anda berpindah tab atau meninggalkan layar ujian.')} (Pelanggaran ke-<strong>${STATE.violationCount} dari 3</strong>). Jika mencapai 3 kali, akun akan terkunci otomatis!
+                ${esc(STATE.antiCheatReason || 'Sistem mendeteksi Anda berpindah tab atau meninggalkan layar ujian.')} (Pelanggaran ke-<strong>${STATE.violationCount} dari ${acCfg.max}</strong>). Jika mencapai ${acCfg.max} kali, akun akan terkunci otomatis!
               </p>
               <button onclick="CBT.closeAntiCheat()"
                 class="mt-5 w-full py-3 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-sm">
@@ -5270,13 +5388,41 @@ function renderMonitoringSection(fixedRuangId = null) {
     terkunci: rows.filter(r => r.status_ujian === 'Terkunci').length,
     selesai: rows.filter(r => r.status_ujian === 'Selesai').length
   };
+  const acCfg = getAntiCheatConfig();
 
   return `
     <div class="space-y-4">
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div class="glass-panel p-4 rounded-2xl"><div class="text-xs text-slate-500 font-semibold">Belum Login</div><div class="text-2xl font-extrabold text-slate-800 mt-1">${stats.belum}</div></div>
         <div class="glass-panel p-4 rounded-2xl border-blue-200"><div class="text-xs text-blue-600 font-semibold">Sedang Mengerjakan</div><div class="text-2xl font-extrabold text-blue-700 mt-1">${stats.sedang}</div></div>
-        <div class="glass-panel p-4 rounded-2xl border-red-200"><div class="text-xs text-red-600 font-semibold">Terkunci (Anti-Cheat)</div><div class="text-2xl font-extrabold text-red-600 mt-1">${stats.terkunci}</div></div>
+        <div class="glass-panel p-4 rounded-2xl ${acCfg.enabled ? 'border-red-200' : 'border-slate-200'}">
+          <div class="flex items-center justify-between gap-1.5">
+            <div class="text-xs ${acCfg.enabled ? 'text-red-600' : 'text-slate-500'} font-semibold leading-tight">Terkunci (Anti-Cheat)</div>
+            <button type="button" role="switch" aria-checked="${acCfg.enabled}" onclick="CBT.toggleAntiCheat()"
+              title="${acCfg.enabled ? 'Klik untuk menonaktifkan Anti-Cheat' : 'Klik untuk mengaktifkan Anti-Cheat'}"
+              class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold transition shrink-0 cursor-pointer ${acCfg.enabled
+                ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs'
+                : 'bg-slate-200 hover:bg-slate-300 text-slate-600'}">
+              <span class="w-2 h-2 rounded-full ${acCfg.enabled ? 'bg-white' : 'bg-slate-400'}"></span>
+              <span>${acCfg.enabled ? 'ON' : 'OFF'}</span>
+            </button>
+          </div>
+          <div class="flex items-end justify-between gap-2 mt-1">
+            <div class="text-2xl font-extrabold ${acCfg.enabled ? 'text-red-600' : 'text-slate-400'}">${stats.terkunci}</div>
+            ${acCfg.enabled ? `
+              <label class="flex items-center gap-1 text-[11px] font-bold text-slate-600 bg-red-50/80 border border-red-200 px-2 py-0.5 rounded-lg">
+                <span>Maks:</span>
+                <input type="number" min="1" max="20" value="${acCfg.max}"
+                  onchange="CBT.setAntiCheatMax(this.value)"
+                  title="Batas maksimal siswa keluar dari layar ujian sebelum akun terkunci otomatis"
+                  class="w-10 text-center font-extrabold text-red-700 bg-white border border-red-300 rounded px-1 py-0.5 outline-none focus:ring-1 focus:ring-red-500" />
+                <span>×</span>
+              </label>
+            ` : `
+              <span class="text-[10px] font-semibold text-slate-400">Nonaktif</span>
+            `}
+          </div>
+        </div>
         <div class="glass-panel p-4 rounded-2xl border-emerald-200"><div class="text-xs text-emerald-600 font-semibold">Selesai Ujian</div><div class="text-2xl font-extrabold text-emerald-700 mt-1">${stats.selesai}</div></div>
       </div>
 
@@ -6955,15 +7101,15 @@ CREATE TABLE IF NOT EXISTS public.pengaturan_sekolah (
     app_subtitle TEXT DEFAULT 'Sistem Asesmen Berbasis Komputer',
     token_aktif TEXT NOT NULL DEFAULT 'SAS2026',
     tanggal_ujian TEXT DEFAULT '2026-11-25',
+    anticheat_enabled BOOLEAN NOT NULL DEFAULT true,
+    anticheat_max_pelanggaran INTEGER NOT NULL DEFAULT 3,
     token_updated_at TIMESTAMPTZ DEFAULT NOW(),
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 ALTER TABLE public.pengaturan_sekolah ADD COLUMN IF NOT EXISTS portal_logo_url TEXT DEFAULT '';
-
--- 2. RUANG UJIAN (Terisolasi per sekolah_id)
-CREATE TABLE IF NOT EXISTS public.ruang_ujian (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+ALTER TABLE public.pengaturan_sekolah ADD COLUMN IF NOT EXISTS anticheat_enabled BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE public.pengaturan_sekolah ADD COLUMN IF NOT EXISTS anticheat_max_pelanggaran INTEGER NOT NULL DEFAULT 3;
     sekolah_id UUID REFERENCES public.pengaturan_sekolah(id) ON DELETE CASCADE,
     kode_ruang TEXT NOT NULL,
     nama_ruang TEXT NOT NULL,
@@ -7642,6 +7788,14 @@ window.CBT = {
   unlockLogin: proktorResetLogin,
   bulkResetLogin: proktorBulkResetLockedLogins,
   resetSesi: proktorResetSesi,
+  toggleAntiCheat: () => {
+    const cur = getAntiCheatConfig();
+    saveAntiCheatConfig(!cur.enabled, cur.max);
+  },
+  setAntiCheatMax: (val) => {
+    const cur = getAntiCheatConfig();
+    saveAntiCheatConfig(cur.enabled, val);
+  },
   setAdminTab: async (tab) => {
     STATE.adminTab = tab;
     STATE.mobileMoreMenuOpen = false;
