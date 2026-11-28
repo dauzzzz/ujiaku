@@ -1362,22 +1362,47 @@ async function saveAntiCheatConfig(enabled, maxPelanggaran, schoolId = null) {
       }
     }
     if (schemaMissing) {
-      notify(`Anti-Cheat ${cleanEnabled ? `ON (maks ${cleanMax}x)` : 'OFF'} tersimpan lokal. Jalankan skrip Update SQL agar sinkron ke semua perangkat siswa.`, "info");
+      notify(
+        `Anti-Cheat ${cleanEnabled ? `ON (Maks ${cleanMax}x)` : 'OFF'} tersimpan lokal. Jalankan Skrip Update SQL Supabase agar sinkron ke semua perangkat.`,
+        "info"
+      );
     } else {
-      notify(cleanEnabled
-        ? `Anti-Cheat AKTIF (Batas maksimal keluar ujian: ${cleanMax}x).`
-        : `Anti-Cheat NONAKTIF (Siswa tidak terkunci otomatis saat keluar tab).`, "success");
+      notify(
+        cleanEnabled
+          ? `Anti-Cheat AKTIF (Batas maksimal keluar ujian: ${cleanMax}x).`
+          : `Anti-Cheat DINONAKTIFKAN untuk cakupan sekolah terpilih.`,
+        "success"
+      );
     }
   } catch (err) {
     notify("Gagal menyimpan pengaturan Anti-Cheat: " + err.message, "error");
   }
 }
 
+function getGlobalAppBadge() {
+  const list = STATE.sekolahList || [];
+  const customInDb = list.find(sk => {
+    const b = String(sk?.app_badge || '').trim();
+    return b && b !== 'PUSDATIN • ANBK';
+  });
+  if (customInDb) return String(customInDb.app_badge).trim();
+  const firstInDb = list.find(sk => String(sk?.app_badge || '').trim());
+  if (firstInDb) return String(firstInDb.app_badge).trim();
+  if (STATE.sekolah && String(STATE.sekolah.app_badge || '').trim()) {
+    return String(STATE.sekolah.app_badge).trim();
+  }
+  try {
+    const saved = localStorage.getItem('cbt_global_app_badge');
+    if (saved && saved.trim()) return saved.trim();
+  } catch (_) {}
+  return 'PUSDATIN • ANBK';
+}
+
 function getAppBranding() {
   const primarySchool = STATE.sekolahList[0] || STATE.sekolah || {};
   return {
     logo_url: primarySchool.logo_url || '',
-    app_badge: primarySchool.app_badge || 'PUSDATIN • ANBK',
+    app_badge: getGlobalAppBadge(),
     app_subtitle: primarySchool.app_subtitle || 'Sistem Asesmen Berbasis Komputer'
   };
 }
@@ -3545,21 +3570,37 @@ async function resetPortalLoginLogo() {
 
 async function savePengaturanSekolah(e, id) {
   e.preventDefault();
+  if (STATE.role !== 'admin') {
+    return notify("Pengaturan identitas & Nama Badge hanya dapat diubah oleh akun Administrator.", "error");
+  }
   const fd = new FormData(e.target);
+  const globalBadge = String(fd.get('app_badge') || 'PUSDATIN • ANBK').trim() || 'PUSDATIN • ANBK';
   const payload = {
     nama_sekolah: String(fd.get('nama_sekolah') || '').trim().toUpperCase(),
     npsn: String(fd.get('npsn') || '').trim(),
     kecamatan: String(fd.get('kecamatan') || '').trim(),
     logo_url: String(fd.get('logo_url') || '').trim(),
-    app_badge: String(fd.get('app_badge') || 'PUSDATIN • ANBK').trim(),
+    app_badge: globalBadge,
     app_subtitle: String(fd.get('app_subtitle') || 'Sistem Asesmen Berbasis Komputer').trim(),
     token_aktif: String(fd.get('token_aktif') || 'SAS2026').trim().toUpperCase()
   };
   try {
     await dbUpdate('pengaturan_sekolah', id, payload);
+    const allSchoolIds = (STATE.sekolahList || []).map(sk => sk.id).filter(Boolean);
+    if (IS_PREVIEW) {
+      (MOCK_DB.pengaturan_sekolah || []).forEach(sk => { sk.app_badge = globalBadge; });
+    } else if (sb && allSchoolIds.length > 0) {
+      for (const batchIds of chunkArray(allSchoolIds, CHUNK_SIZE)) {
+        const { error } = await sb.from('pengaturan_sekolah')
+          .update({ app_badge: globalBadge })
+          .in('id', batchIds);
+        if (error) throw error;
+      }
+    }
+    try { localStorage.setItem('cbt_global_app_badge', globalBadge); } catch (_) {}
     await loadInitialData();
     render();
-    notify("Pengaturan identitas sekolah berhasil disimpan.", "success");
+    notify(`Pengaturan berhasil disimpan. Nama Badge "${globalBadge}" kini aktif di seluruh sekolah/lembaga.`, "success");
   } catch (err) {
     notify("Gagal menyimpan pengaturan sekolah: " + err.message, "error");
   }
@@ -3573,7 +3614,8 @@ async function addSekolahBaru(e) {
     nama_sekolah: String(fd.get('nama_sekolah') || '').trim().toUpperCase(),
     kecamatan: String(fd.get('kecamatan') || '').trim(),
     token_aktif: String(fd.get('token_aktif') || 'SAS2026').trim().toUpperCase(),
-    logo_url: String(fd.get('logo_url') || '').trim()
+    logo_url: String(fd.get('logo_url') || '').trim(),
+    app_badge: getGlobalAppBadge()
   };
   try {
     if (STATE.editSekolahId) {
@@ -4139,12 +4181,14 @@ function handleImportSekolahExcel(e) {
   const file = e.target.files?.[0];
   e.target.value = '';
   readExcelFile(file, async (rows) => {
+    const globalBadge = getGlobalAppBadge();
     const payload = rows.map(r => ({
       npsn: String(r.NPSN || r.npsn || '').trim(),
       nama_sekolah: String(r.NAMA_SEKOLAH || r.nama_sekolah || '').trim().toUpperCase(),
       kecamatan: String(r.KECAMATAN || r.kecamatan || '').trim(),
       token_aktif: String(r.TOKEN_AKTIF || r.token_aktif || 'SAS2026').trim().toUpperCase(),
-      logo_url: String(r.LOGO_URL || r.logo_url || '').trim()
+      logo_url: String(r.LOGO_URL || r.logo_url || '').trim(),
+      app_badge: globalBadge
     })).filter(x => x.npsn && x.nama_sekolah);
     if (!payload.length) return notify("Tidak ada baris valid (kolom NPSN & NAMA_SEKOLAH wajib diisi).", "error");
     await dbUpsert('pengaturan_sekolah', payload, 'npsn');
@@ -4562,7 +4606,284 @@ function exportHasilExcel() {
   downloadSheetXlsx(rows, 'Rekap_Nilai', `Rekap_Nilai_CBT_${getWIBNow().toISOString().slice(0,10)}.xlsx`, [6, 26, 12, 16, 28, 8, 28, 8, 8, 8, 8, 12, 16]);
 }
 
+function buildPrintableRekapF4Html() {
+  const list = getFilteredHasil();
+  const isAllSchool = STATE.role === 'admin' && STATE.activeSekolahId === 'ALL';
+  const sek = getSekolahById(STATE.activeSekolahId);
+  const brand = getAppBranding();
+  const logoSrc = isAllSchool ? (brand.logo_url || DEFAULT_SHIELD_SVG) : (sek.logo_url || DEFAULT_SHIELD_SVG);
+  const selectedMapel = (STATE.selectedMapelId && STATE.selectedMapelId !== 'Semua')
+    ? STATE.mapelList.find(m => String(m.id) === String(STATE.selectedMapelId))
+    : null;
+
+  const scores = list.map(h => Number(h.skor_akhir) || 0);
+  const totalPeserta = list.length;
+  const rataRata = totalPeserta > 0 ? (scores.reduce((a, b) => a + b, 0) / totalPeserta).toFixed(2) : '0.00';
+  const nilaiTertinggi = totalPeserta > 0 ? Math.max(...scores).toFixed(2) : '0.00';
+  const nilaiTerendah = totalPeserta > 0 ? Math.min(...scores).toFixed(2) : '0.00';
+  const tglCetak = formatTanggalIndo(getWIBNow().toISOString().slice(0, 10));
+
+  const itemStats = (selectedMapel && Array.isArray(STATE.soalList) && STATE.soalList.length > 0)
+    ? STATE.soalList.map(q => {
+        let dijawab = 0, benar = 0;
+        list.forEach(h => {
+          const d = (h.detail_jawaban || {})[q.id];
+          if (d && d.status !== 'kosong') {
+            dijawab++;
+            if (d.status === 'benar') benar++;
+          }
+        });
+        const dayaSerap = dijawab > 0 ? Math.round((benar / dijawab) * 100) : 0;
+        const plainQ = String(q.pertanyaan || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+        return { q, plainQ, dijawab, benar, dayaSerap };
+      })
+    : [];
+
+  return `<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <title>Laporan Rekap Nilai CBT (F4)</title>
+  <style>
+    @page { size: 215mm 330mm; margin: 12mm; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 16px;
+      font-family: 'Inter', Arial, sans-serif;
+      color: #0F172A;
+      background: #FFFFFF;
+      font-size: 11px;
+      line-height: 1.4;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .print-toolbar {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-bottom: 14px;
+      padding-bottom: 10px;
+      border-bottom: 1px dashed #CBD5E1;
+    }
+    .print-toolbar button {
+      padding: 8px 14px;
+      border-radius: 8px;
+      border: 1px solid #CBD5E1;
+      font-weight: 700;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .btn-print-now { background: #1D4ED8; color: #FFFFFF; border-color: #1D4ED8 !important; }
+    .btn-close-win { background: #F1F5F9; color: #334155; }
+    .kop {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding-bottom: 10px;
+      border-bottom: 2.5px solid #0F172A;
+      margin-bottom: 12px;
+    }
+    .kop-logo { width: 52px; height: 56px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+    .kop-logo img { max-width: 100%; max-height: 100%; object-fit: contain; }
+    .kop-text { flex: 1; text-align: center; }
+    .kop-badge { font-size: 10px; font-weight: 800; color: #1E40AF; text-transform: uppercase; letter-spacing: 0.06em; }
+    .kop-school { font-size: 15px; font-weight: 800; text-transform: uppercase; margin: 2px 0; }
+    .kop-title { font-size: 12px; font-weight: 800; color: #1E293B; text-transform: uppercase; }
+    .kop-sub { font-size: 10px; color: #475569; margin-top: 2px; }
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .stat-box {
+      border: 1px solid #CBD5E1;
+      border-radius: 8px;
+      padding: 7px 10px;
+      background: #F8FAFC;
+    }
+    .stat-label { font-size: 9.5px; color: #64748B; font-weight: 700; text-transform: uppercase; }
+    .stat-val { font-size: 15px; font-weight: 800; color: #0F172A; margin-top: 2px; }
+    .section-title {
+      font-size: 12px;
+      font-weight: 800;
+      margin: 14px 0 6px;
+      color: #0F172A;
+      text-transform: uppercase;
+    }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+    th, td { border: 1px solid #94A3B8; padding: 5px 6px; vertical-align: top; }
+    th { background: #F1F5F9; font-weight: 800; text-align: left; font-size: 10px; text-transform: uppercase; }
+    td { font-size: 10.5px; }
+    .text-center { text-align: center; }
+    .text-right { text-align: right; }
+    .font-mono { font-family: ui-monospace, Consolas, monospace; }
+    .nilai-strong { font-weight: 800; color: #1D4ED8; font-size: 11.5px; }
+    .sign-wrap {
+      margin-top: 20px;
+      display: flex;
+      justify-content: flex-end;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+    .sign-box { width: 220px; text-align: center; font-size: 10.5px; }
+    .sign-line { margin: 46px auto 4px; width: 170px; border-bottom: 1.5px solid #0F172A; }
+    @media print {
+      body { padding: 0; }
+      .print-toolbar { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="print-toolbar">
+    <button type="button" class="btn-print-now" onclick="window.print()">🖨 Cetak / Simpan PDF (F4)</button>
+    <button type="button" class="btn-close-win" onclick="window.close()">Tutup</button>
+  </div>
+
+  <div class="kop">
+    <div class="kop-logo">
+      <img src="${esc(logoSrc)}" onerror="this.onerror=null;this.src='${DEFAULT_SHIELD_SVG}'" alt="Logo" />
+    </div>
+    <div class="kop-text">
+      <div class="kop-badge">${esc(getGlobalAppBadge())}</div>
+      <div class="kop-school">${esc(isAllSchool ? 'KOORDINATOR MULTI-SEKOLAH (SEMUA NPSN)' : sek.nama_sekolah)}</div>
+      <div class="kop-title">LAPORAN REKAP NILAI &amp; ANALISIS BUTIR SOAL UJIAN CBT</div>
+      <div class="kop-sub">
+        ${isAllSchool ? `Cakupan: ${STATE.sekolahList.length} Sekolah` : `NPSN: ${esc(sek.npsn)}${sek.kecamatan ? ` • ${esc(sek.kecamatan)}` : ''}`}
+        • Paket: <strong>${esc(selectedMapel ? `${selectedMapel.kode_mapel} - ${selectedMapel.nama_mapel}` : 'Semua Paket Ujian')}</strong>
+      </div>
+    </div>
+  </div>
+
+  <div class="meta-grid">
+    <div class="stat-box"><div class="stat-label">Jumlah Peserta</div><div class="stat-val">${totalPeserta}</div></div>
+    <div class="stat-box"><div class="stat-label">Rata-Rata Nilai</div><div class="stat-val">${rataRata}</div></div>
+    <div class="stat-box"><div class="stat-label">Nilai Tertinggi</div><div class="stat-val">${nilaiTertinggi}</div></div>
+    <div class="stat-box"><div class="stat-label">Nilai Terendah</div><div class="stat-val">${nilaiTerendah}</div></div>
+  </div>
+
+  <div class="section-title">A. Rekapitulasi Nilai Peserta</div>
+  <table>
+    <thead>
+      <tr>
+        <th class="text-center" style="width:28px;">No</th>
+        <th>Nama Lembaga / Sekolah</th>
+        <th style="width:90px;">NISN / User</th>
+        <th>Nama Peserta</th>
+        <th class="text-center" style="width:38px;">Kls</th>
+        <th>Paket Ujian</th>
+        <th class="text-center" style="width:72px;">B/P/S/K</th>
+        <th class="text-center" style="width:54px;">Nilai</th>
+        <th class="text-center" style="width:72px;">Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${list.map((h, idx) => {
+        const s = STATE.siswaList.find(x => x.id === h.siswa_id) || {};
+        const sk = getSekolahById(h.sekolah_id || s.sekolah_id);
+        const m = STATE.mapelList.find(x => x.id === h.mapel_id) || {};
+        return `
+          <tr>
+            <td class="text-center">${idx + 1}</td>
+            <td>${esc(sk.nama_sekolah)}</td>
+            <td class="font-mono">${esc(s.username || '-')}</td>
+            <td><strong>${esc(s.nama_lengkap || '-')}</strong></td>
+            <td class="text-center">${esc(s.kelas || '-')}</td>
+            <td>${esc(m.nama_mapel || '-')}</td>
+            <td class="text-center font-mono">${h.jumlah_benar}/${h.jumlah_parsial}/${h.jumlah_salah}/${h.jumlah_kosong}</td>
+            <td class="text-center nilai-strong">${h.skor_akhir}</td>
+            <td class="text-center">${esc(h.status || 'Selesai')}</td>
+          </tr>
+        `;
+      }).join('')}
+    </tbody>
+  </table>
+
+  ${itemStats.length > 0 ? `
+    <div class="section-title">B. Analisis Butir Soal (${esc(selectedMapel.nama_mapel)})</div>
+    <table>
+      <thead>
+        <tr>
+          <th class="text-center" style="width:32px;">No</th>
+          <th class="text-center" style="width:52px;">Tipe</th>
+          <th>Ringkasan Pertanyaan</th>
+          <th class="text-center" style="width:95px;">Menjawab Benar</th>
+          <th class="text-center" style="width:75px;">Daya Serap</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${itemStats.map(it => `
+          <tr>
+            <td class="text-center"><strong>${it.q.nomor_urut}</strong></td>
+            <td class="text-center">${esc(it.q.jenis_soal)}</td>
+            <td>${esc(it.plainQ.length > 180 ? it.plainQ.slice(0, 180) + '...' : it.plainQ)}</td>
+            <td class="text-center">${it.benar} / ${it.dijawab} Peserta</td>
+            <td class="text-center nilai-strong">${it.dayaSerap}%</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  ` : ''}
+
+  <div class="sign-wrap">
+    <div class="sign-box">
+      <div>${esc(tglCetak)}</div>
+      <div>Kepala Sekolah / Ketua Panitia,</div>
+      <div class="sign-line"></div>
+      <div>NIP. ........................................</div>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
 function printRekapF4() {
+  const list = getFilteredHasil();
+  if (!list.length) {
+    return notify("Belum ada data hasil ujian pada filter terpilih untuk dicetak.", "info");
+  }
+  const html = buildPrintableRekapF4Html();
+
+  // 1. Coba buka jendela cetak baru (sama seperti Cetak Kartu F4 agar ukuran F4 akurat)
+  const w = window.open('', '_blank', 'width=1020,height=780');
+  if (w) {
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    setTimeout(() => { try { w.print(); } catch (_) {} }, 350);
+    return;
+  }
+
+  // 2. Fallback bila pop-up diblokir browser: cetak melalui iframe tersembunyi
+  try {
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    document.body.appendChild(iframe);
+    const doc = iframe.contentWindow?.document;
+    if (doc) {
+      doc.open();
+      doc.write(html);
+      doc.close();
+      setTimeout(() => {
+        try {
+          iframe.contentWindow.focus();
+          iframe.contentWindow.print();
+        } catch (_) {
+          window.print();
+        }
+        setTimeout(() => { try { iframe.remove(); } catch (_) {} }, 2000);
+      }, 350);
+      return;
+    }
+  } catch (_) {}
+
   window.print();
 }
 
@@ -4747,7 +5068,7 @@ function renderHeaderPusdatin(subtitle, rightHtml = '') {
           </div>
           <div class="min-w-0">
             <div class="flex items-center gap-1.5">
-              <span class="text-[10px] font-extrabold tracking-wider uppercase bg-amber-400 text-slate-950 px-2 py-0.5 rounded">${esc(sek.app_badge || brand.app_badge)}</span>
+              <span class="text-[10px] font-extrabold tracking-wider uppercase bg-amber-400 text-slate-950 px-2 py-0.5 rounded">${esc(getGlobalAppBadge())}</span>
               <span class="text-xs text-blue-100 truncate hidden sm:inline">${esc(subtitle)}</span>
             </div>
             <h1 class="text-xs sm:text-base font-extrabold tracking-tight leading-tight truncate">${esc(titleText)}</h1>
@@ -5752,8 +6073,8 @@ function renderAdminContent() {
             </div>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <div>
-                <label class="font-bold text-slate-600 block mb-1">Nama Badge (Contoh: PUSDATIN • ANBK)</label>
-                <input name="app_badge" value="${esc(selectedSek.app_badge || 'PUSDATIN • ANBK')}" required class="w-full px-3 py-2 rounded-xl border bg-white font-bold" />
+                <label class="font-bold text-slate-600 block mb-1">Nama Badge (Khusus Admin • Berlaku di Semua Sekolah)</label>
+                <input name="app_badge" value="${esc(getGlobalAppBadge())}" required class="w-full px-3 py-2 rounded-xl border bg-white font-bold" />
               </div>
               <div>
                 <label class="font-bold text-slate-600 block mb-1">Subjudul Aplikasi</label>
