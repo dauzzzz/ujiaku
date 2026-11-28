@@ -2824,16 +2824,63 @@ function enterExamFullscreen() {
     if (!document.fullscreenElement && el.requestFullscreen) {
       el.requestFullscreen().catch(() => {});
     }
+    // Mengunci tombol Escape di browser yang mendukung Keyboard Lock API (Chrome/Edge HTTPS)
+    if (navigator.keyboard && typeof navigator.keyboard.lock === 'function') {
+      navigator.keyboard.lock(['Escape']).catch(() => {});
+    }
   } catch (_) {}
 }
 
 function exitExamFullscreen() {
+  try {
+    if (navigator.keyboard && typeof navigator.keyboard.unlock === 'function') {
+      navigator.keyboard.unlock();
+    }
+  } catch (_) {}
   try {
     if (document.fullscreenElement && document.exitFullscreen) {
       document.exitFullscreen().catch(() => {});
     }
   } catch (_) {}
 }
+
+function isStudentActivelyTakingExam() {
+  return STATE.role === 'siswa' && STATE.siswaStep === 'ujian' && !!STATE.activeExamMapel;
+}
+
+// Memblokir penekanan tombol ESC dan F11 saat siswa sedang mengerjakan ujian
+function handleStudentExamKeyGuard(e) {
+  if (!isStudentActivelyTakingExam()) return;
+  const isEsc = e.key === 'Escape' || e.key === 'Esc' || e.code === 'Escape' || e.keyCode === 27;
+  const isF11 = e.key === 'F11' || e.code === 'F11' || e.keyCode === 122;
+  if (isEsc || isF11) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (typeof e.stopImmediatePropagation === 'function') {
+      e.stopImmediatePropagation();
+    }
+    if (!document.fullscreenElement) {
+      enterExamFullscreen();
+    }
+  }
+}
+
+document.addEventListener('keydown', handleStudentExamKeyGuard, true);
+document.addEventListener('keyup', handleStudentExamKeyGuard, true);
+
+// Jika layar penuh tetap keluar (misal ESC ditahan lama atau belum didukung Keyboard Lock),
+// otomatis catat pelanggaran jika Anti-Cheat ON atau paksa kembali ke layar penuh
+document.addEventListener('fullscreenchange', () => {
+  if (!isStudentActivelyTakingExam()) return;
+  if (!document.fullscreenElement) {
+    const acCfg = getAntiCheatConfig(STATE.user?.sekolah_id);
+    if (acCfg.enabled) {
+      recordExamViolation("Sistem mendeteksi Anda keluar dari tampilan layar penuh (tombol ESC).");
+    } else {
+      enterExamFullscreen();
+    }
+  }
+});
 
 /* ============================================================================
    HELPER SCOPE SEKOLAH & FILTER DATA
