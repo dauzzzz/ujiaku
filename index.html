@@ -1315,6 +1315,9 @@ function getAntiCheatConfig(schoolId = null) {
 }
 
 async function saveAntiCheatConfig(enabled, maxPelanggaran, schoolId = null) {
+  if (STATE.role !== 'admin') {
+    return notify("Pengaturan Anti-Cheat hanya dapat diubah oleh akun Administrator.", "error");
+  }
   const sid = schoolId || getEffectiveSchoolFilter();
   const cleanEnabled = Boolean(enabled);
   const cleanMax = Math.min(20, Math.max(1, Math.floor(Number(maxPelanggaran) || 3)));
@@ -5388,6 +5391,7 @@ function renderMonitoringSection(fixedRuangId = null) {
     terkunci: rows.filter(r => r.status_ujian === 'Terkunci').length,
     selesai: rows.filter(r => r.status_ujian === 'Selesai').length
   };
+  const isAdmin = STATE.role === 'admin';
   const acCfg = getAntiCheatConfig();
 
   return `
@@ -5395,34 +5399,41 @@ function renderMonitoringSection(fixedRuangId = null) {
       <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div class="glass-panel p-4 rounded-2xl"><div class="text-xs text-slate-500 font-semibold">Belum Login</div><div class="text-2xl font-extrabold text-slate-800 mt-1">${stats.belum}</div></div>
         <div class="glass-panel p-4 rounded-2xl border-blue-200"><div class="text-xs text-blue-600 font-semibold">Sedang Mengerjakan</div><div class="text-2xl font-extrabold text-blue-700 mt-1">${stats.sedang}</div></div>
-        <div class="glass-panel p-4 rounded-2xl ${acCfg.enabled ? 'border-red-200' : 'border-slate-200'}">
-          <div class="flex items-center justify-between gap-1.5">
-            <div class="text-xs ${acCfg.enabled ? 'text-red-600' : 'text-slate-500'} font-semibold leading-tight">Terkunci (Anti-Cheat)</div>
-            <button type="button" role="switch" aria-checked="${acCfg.enabled}" onclick="CBT.toggleAntiCheat()"
-              title="${acCfg.enabled ? 'Klik untuk menonaktifkan Anti-Cheat' : 'Klik untuk mengaktifkan Anti-Cheat'}"
-              class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold transition shrink-0 cursor-pointer ${acCfg.enabled
-                ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs'
-                : 'bg-slate-200 hover:bg-slate-300 text-slate-600'}">
-              <span class="w-2 h-2 rounded-full ${acCfg.enabled ? 'bg-white' : 'bg-slate-400'}"></span>
-              <span>${acCfg.enabled ? 'ON' : 'OFF'}</span>
-            </button>
+        ${isAdmin ? `
+          <div class="glass-panel p-4 rounded-2xl ${acCfg.enabled ? 'border-red-200' : 'border-slate-200'}">
+            <div class="flex items-center justify-between gap-1.5">
+              <div class="text-xs ${acCfg.enabled ? 'text-red-600' : 'text-slate-500'} font-semibold leading-tight">Terkunci (Anti-Cheat)</div>
+              <button type="button" role="switch" aria-checked="${acCfg.enabled}" onclick="CBT.toggleAntiCheat()"
+                title="${acCfg.enabled ? 'Klik untuk menonaktifkan Anti-Cheat' : 'Klik untuk mengaktifkan Anti-Cheat'}"
+                class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold transition shrink-0 cursor-pointer ${acCfg.enabled
+                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs'
+                  : 'bg-slate-200 hover:bg-slate-300 text-slate-600'}">
+                <span class="w-2 h-2 rounded-full ${acCfg.enabled ? 'bg-white' : 'bg-slate-400'}"></span>
+                <span>${acCfg.enabled ? 'ON' : 'OFF'}</span>
+              </button>
+            </div>
+            <div class="flex items-end justify-between gap-2 mt-1">
+              <div class="text-2xl font-extrabold ${acCfg.enabled ? 'text-red-600' : 'text-slate-400'}">${stats.terkunci}</div>
+              ${acCfg.enabled ? `
+                <label class="flex items-center gap-1 text-[11px] font-bold text-slate-600 bg-red-50/80 border border-red-200 px-2 py-0.5 rounded-lg">
+                  <span>Maks:</span>
+                  <input type="number" min="1" max="20" value="${acCfg.max}"
+                    onchange="CBT.setAntiCheatMax(this.value)"
+                    title="Batas maksimal siswa keluar dari layar ujian sebelum akun terkunci otomatis"
+                    class="w-10 text-center font-extrabold text-red-700 bg-white border border-red-300 rounded px-1 py-0.5 outline-none focus:ring-1 focus:ring-red-500" />
+                  <span>×</span>
+                </label>
+              ` : `
+                <span class="text-[10px] font-semibold text-slate-400">Nonaktif</span>
+              `}
+            </div>
           </div>
-          <div class="flex items-end justify-between gap-2 mt-1">
-            <div class="text-2xl font-extrabold ${acCfg.enabled ? 'text-red-600' : 'text-slate-400'}">${stats.terkunci}</div>
-            ${acCfg.enabled ? `
-              <label class="flex items-center gap-1 text-[11px] font-bold text-slate-600 bg-red-50/80 border border-red-200 px-2 py-0.5 rounded-lg">
-                <span>Maks:</span>
-                <input type="number" min="1" max="20" value="${acCfg.max}"
-                  onchange="CBT.setAntiCheatMax(this.value)"
-                  title="Batas maksimal siswa keluar dari layar ujian sebelum akun terkunci otomatis"
-                  class="w-10 text-center font-extrabold text-red-700 bg-white border border-red-300 rounded px-1 py-0.5 outline-none focus:ring-1 focus:ring-red-500" />
-                <span>×</span>
-              </label>
-            ` : `
-              <span class="text-[10px] font-semibold text-slate-400">Nonaktif</span>
-            `}
+        ` : `
+          <div class="glass-panel p-4 rounded-2xl border-red-200">
+            <div class="text-xs text-red-600 font-semibold leading-tight">Terkunci (Anti-Cheat)</div>
+            <div class="text-2xl font-extrabold text-red-600 mt-1">${stats.terkunci}</div>
           </div>
-        </div>
+        `}
         <div class="glass-panel p-4 rounded-2xl border-emerald-200"><div class="text-xs text-emerald-600 font-semibold">Selesai Ujian</div><div class="text-2xl font-extrabold text-emerald-700 mt-1">${stats.selesai}</div></div>
       </div>
 
@@ -7110,6 +7121,10 @@ CREATE TABLE IF NOT EXISTS public.pengaturan_sekolah (
 ALTER TABLE public.pengaturan_sekolah ADD COLUMN IF NOT EXISTS portal_logo_url TEXT DEFAULT '';
 ALTER TABLE public.pengaturan_sekolah ADD COLUMN IF NOT EXISTS anticheat_enabled BOOLEAN NOT NULL DEFAULT true;
 ALTER TABLE public.pengaturan_sekolah ADD COLUMN IF NOT EXISTS anticheat_max_pelanggaran INTEGER NOT NULL DEFAULT 3;
+
+-- 2. RUANG UJIAN (Terisolasi per sekolah_id)
+CREATE TABLE IF NOT EXISTS public.ruang_ujian (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     sekolah_id UUID REFERENCES public.pengaturan_sekolah(id) ON DELETE CASCADE,
     kode_ruang TEXT NOT NULL,
     nama_ruang TEXT NOT NULL,
@@ -7789,10 +7804,12 @@ window.CBT = {
   bulkResetLogin: proktorBulkResetLockedLogins,
   resetSesi: proktorResetSesi,
   toggleAntiCheat: () => {
+    if (STATE.role !== 'admin') return notify("Pengaturan Anti-Cheat hanya dapat diubah oleh akun Administrator.", "error");
     const cur = getAntiCheatConfig();
     saveAntiCheatConfig(!cur.enabled, cur.max);
   },
   setAntiCheatMax: (val) => {
+    if (STATE.role !== 'admin') return notify("Pengaturan Anti-Cheat hanya dapat diubah oleh akun Administrator.", "error");
     const cur = getAntiCheatConfig();
     saveAntiCheatConfig(cur.enabled, val);
   },
